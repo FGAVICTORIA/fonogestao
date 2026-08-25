@@ -8,6 +8,8 @@ export const supabase = createClient(url, key)
 
 const app = document.querySelector('#app')
 
+const SITE_URL = 'https://fonogestao-seven.vercel.app'
+
 function login() {
   app.innerHTML = `
     <main class="login">
@@ -20,15 +22,24 @@ function login() {
 
         <button id="entrar">Entrar</button>
 
+        <button id="recuperar" type="button" style="margin-top:10px;">
+          🔑 Esqueci minha senha
+        </button>
+
         <div id="msg"></div>
       </div>
     </main>
   `
 
   document.querySelector('#entrar').onclick = async () => {
-    const emailValue = document.querySelector('#email').value
+    const emailValue = document.querySelector('#email').value.trim()
     const passwordValue = document.querySelector('#password').value
     const msg = document.querySelector('#msg')
+
+    if (!emailValue || !passwordValue) {
+      msg.textContent = '⚠️ Informe e-mail e senha.'
+      return
+    }
 
     msg.textContent = 'Entrando...'
 
@@ -42,6 +53,148 @@ function login() {
     } else {
       start()
     }
+  }
+
+  document.querySelector('#recuperar').onclick = () => {
+    showRecovery()
+  }
+}
+
+function showRecovery() {
+  app.innerHTML = `
+    <main class="login">
+      <div class="box">
+        <h1>🔑 Recuperar senha</h1>
+
+        <p>
+          Informe seu e-mail e enviaremos um link
+          para criar uma nova senha.
+        </p>
+
+        <input
+          id="recovery-email"
+          type="email"
+          placeholder="E-mail"
+        >
+
+        <button id="enviar-recuperacao">
+          Enviar link
+        </button>
+
+        <button id="voltar-login" type="button" style="margin-top:10px;">
+          ← Voltar para o login
+        </button>
+
+        <div id="recovery-msg"></div>
+      </div>
+    </main>
+  `
+
+  document.querySelector('#voltar-login').onclick = () => {
+    login()
+  }
+
+  document.querySelector('#enviar-recuperacao').onclick = async () => {
+    const email = document.querySelector('#recovery-email').value.trim()
+    const msg = document.querySelector('#recovery-msg')
+    const botao = document.querySelector('#enviar-recuperacao')
+
+    if (!email) {
+      msg.textContent = '⚠️ Informe seu e-mail.'
+      return
+    }
+
+    botao.disabled = true
+    msg.textContent = '⏳ Enviando...'
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: SITE_URL
+    })
+
+    botao.disabled = false
+
+    if (error) {
+      msg.textContent = '❌ ' + error.message
+      return
+    }
+
+    msg.textContent =
+      '✅ Enviamos um link para seu e-mail. Verifique também o spam.'
+  }
+}
+
+function showUpdatePassword() {
+  app.innerHTML = `
+    <main class="login">
+      <div class="box">
+        <h1>🔐 Nova senha</h1>
+
+        <p>Digite sua nova senha.</p>
+
+        <input
+          id="new-password"
+          type="password"
+          placeholder="Nova senha"
+        >
+
+        <input
+          id="confirm-password"
+          type="password"
+          placeholder="Confirmar nova senha"
+        >
+
+        <button id="salvar-nova-senha">
+          Alterar senha
+        </button>
+
+        <div id="password-msg"></div>
+      </div>
+    </main>
+  `
+
+  document.querySelector('#salvar-nova-senha').onclick = async () => {
+    const password = document.querySelector('#new-password').value
+    const confirmPassword =
+      document.querySelector('#confirm-password').value
+
+    const msg = document.querySelector('#password-msg')
+    const botao = document.querySelector('#salvar-nova-senha')
+
+    if (!password || !confirmPassword) {
+      msg.textContent = '⚠️ Preencha os dois campos.'
+      return
+    }
+
+    if (password.length < 6) {
+      msg.textContent =
+        '⚠️ A senha precisa ter pelo menos 6 caracteres.'
+      return
+    }
+
+    if (password !== confirmPassword) {
+      msg.textContent = '⚠️ As senhas não conferem.'
+      return
+    }
+
+    botao.disabled = true
+    msg.textContent = '⏳ Alterando senha...'
+
+    const { error } = await supabase.auth.updateUser({
+      password
+    })
+
+    botao.disabled = false
+
+    if (error) {
+      msg.textContent = '❌ ' + error.message
+      return
+    }
+
+    msg.textContent = '✅ Senha alterada com sucesso!'
+
+    setTimeout(() => {
+      start()
+    }, 1500)
   }
 }
 
@@ -113,7 +266,6 @@ async function start() {
 }
 
 function show(page) {
-
   document.querySelectorAll('.nav').forEach(button => {
     button.classList.toggle(
       'active',
@@ -149,7 +301,6 @@ function show(page) {
   }
 
   const [title, description] = titles[page]
-
   const content = document.querySelector('#page')
 
   content.innerHTML = `
@@ -180,7 +331,6 @@ function show(page) {
 }
 
 function calendar() {
-
   const days = [
     'Dom 23/08',
     'Seg 24/08',
@@ -238,7 +388,6 @@ function calendar() {
 }
 
 function patients() {
-
   return `
     <div class="box">
 
@@ -258,7 +407,6 @@ function patients() {
 }
 
 function evolutions() {
-
   return `
     <div class="box">
 
@@ -274,7 +422,6 @@ function evolutions() {
 }
 
 function team() {
-
   return `
     <div class="box">
 
@@ -347,12 +494,20 @@ function team() {
 }
 
 function configurarCadastroProfissional() {
+  const novoBotao =
+    document.querySelector('#novo-profissional')
 
-  const novoBotao = document.querySelector('#novo-profissional')
-  const form = document.querySelector('#form-profissional')
-  const cancelar = document.querySelector('#cancelar-profissional')
-  const salvar = document.querySelector('#salvar-profissional')
-  const resultado = document.querySelector('#resultado-profissional')
+  const form =
+    document.querySelector('#form-profissional')
+
+  const cancelar =
+    document.querySelector('#cancelar-profissional')
+
+  const salvar =
+    document.querySelector('#salvar-profissional')
+
+  const resultado =
+    document.querySelector('#resultado-profissional')
 
   if (!novoBotao) return
 
@@ -368,23 +523,27 @@ function configurarCadastroProfissional() {
   }
 
   salvar.onclick = async () => {
+    const nome =
+      document.querySelector('#novo-nome').value.trim()
 
-    const nome = document.querySelector('#novo-nome').value.trim()
-    const email = document.querySelector('#novo-email').value.trim()
-    const senha = document.querySelector('#nova-senha').value
-    const papel = document.querySelector('#novo-papel').value
+    const email =
+      document.querySelector('#novo-email').value.trim()
+
+    const senha =
+      document.querySelector('#nova-senha').value
+
+    const papel =
+      document.querySelector('#novo-papel').value
 
     if (!nome || !email || !senha) {
       resultado.textContent =
         '⚠️ Preencha nome, e-mail e senha.'
-
       return
     }
 
     if (senha.length < 6) {
       resultado.textContent =
         '⚠️ A senha precisa ter pelo menos 6 caracteres.'
-
       return
     }
 
@@ -404,18 +563,14 @@ function configurarCadastroProfissional() {
     salvar.disabled = false
 
     if (error) {
-
       resultado.textContent =
         '❌ Erro: ' + error.message
-
       return
     }
 
     if (data?.error) {
-
       resultado.textContent =
         '❌ Erro: ' + data.error
-
       return
     }
 
@@ -425,12 +580,10 @@ function configurarCadastroProfissional() {
     document.querySelector('#novo-nome').value = ''
     document.querySelector('#novo-email').value = ''
     document.querySelector('#nova-senha').value = ''
-
   }
 }
 
 function supervision() {
-
   return `
     <div class="box">
 
@@ -444,5 +597,11 @@ function supervision() {
     </div>
   `
 }
+
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    showUpdatePassword()
+  }
+})
 
 start()
