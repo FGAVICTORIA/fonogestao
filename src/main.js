@@ -10,10 +10,21 @@ const app = document.querySelector('#app')
 const SITE_URL = 'https://fonogestao-seven.vercel.app'
 
 let currentProfile = null
+let currentWeek = new Date()
 
-/* =========================
-   UTILITÁRIOS
-========================= */
+const MANAGER_ROLES = [
+  'supervisora',
+  'proprietaria',
+  'recepcionista'
+]
+
+function isManager() {
+  return MANAGER_ROLES.includes(currentProfile?.role)
+}
+
+function isProfessional() {
+  return ['profissional', 'estagiaria'].includes(currentProfile?.role)
+}
 
 function escapeHtml(value = '') {
   return String(value)
@@ -24,51 +35,67 @@ function escapeHtml(value = '') {
     .replaceAll("'", '&#039;')
 }
 
-function formatDate(date) {
-  return date.toISOString().split('T')[0]
+function formatDate(dateString) {
+  if (!dateString) return ''
+
+  const [year, month, day] = dateString.split('-')
+  return `${day}/${month}/${year}`
 }
 
-function formatDateBR(date) {
-  return date.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit'
-  })
+function dateInputValue(date) {
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
-function getWeekStart(date = new Date()) {
+function getMonday(date) {
   const d = new Date(date)
   const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
 
+  d.setDate(d.getDate() + diff)
   d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() - day)
 
   return d
 }
 
-function getWeekDays(date = new Date()) {
-  const start = getWeekStart(date)
+function getWeekDates() {
+  const monday = getMonday(currentWeek)
 
   return Array.from({ length: 7 }, (_, index) => {
-    const d = new Date(start)
-    d.setDate(start.getDate() + index)
-    return d
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    return date
   })
 }
 
-/* =========================
-   LOGIN
-========================= */
+function roleLabel(role) {
+  const labels = {
+    supervisora: 'Supervisora',
+    proprietaria: 'Proprietária',
+    recepcionista: 'Recepcionista',
+    profissional: 'Fonoaudióloga',
+    estagiaria: 'Estagiária'
+  }
 
-function login() {
+  return labels[role] || role
+}
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+function login(message = '') {
   app.innerHTML = `
     <main class="login">
       <div class="box">
 
         <h1>💬 FonoGestão</h1>
 
-        <p>
-          Agenda e gestão fonoaudiológica
-        </p>
+        <p>Agenda e gestão fonoaudiológica</p>
 
         <input
           id="email"
@@ -87,279 +114,109 @@ function login() {
         </button>
 
         <button
-          id="recuperar"
-          type="button"
+          id="esqueci-senha"
           style="margin-top:10px;"
         >
-          🔑 Esqueci minha senha
+          Esqueci minha senha
         </button>
 
-        <div id="msg"></div>
+        <div id="msg">
+          ${escapeHtml(message)}
+        </div>
 
       </div>
     </main>
   `
 
-  document.querySelector('#entrar').onclick =
-    async () => {
+  document.querySelector('#entrar').onclick = async () => {
+    const email = document.querySelector('#email').value.trim()
+    const password = document.querySelector('#password').value
+    const msg = document.querySelector('#msg')
 
-      const email =
-        document.querySelector('#email')
-          .value.trim()
-
-      const password =
-        document.querySelector('#password')
-          .value
-
-      const msg =
-        document.querySelector('#msg')
-
-      if (!email || !password) {
-        msg.textContent =
-          '⚠️ Informe e-mail e senha.'
-        return
-      }
-
-      msg.textContent =
-        'Entrando...'
-
-      const { error } =
-        await supabase.auth.signInWithPassword({
-          email,
-          password
-        })
-
-      if (error) {
-        msg.textContent =
-          error.message
-      } else {
-        start()
-      }
+    if (!email || !password) {
+      msg.textContent = 'Informe seu e-mail e sua senha.'
+      return
     }
 
-  document.querySelector('#recuperar').onclick =
-    showRecovery
-}
+    msg.textContent = 'Entrando...'
 
-/* =========================
-   RECUPERAÇÃO
-========================= */
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
 
-function showRecovery() {
+    if (error) {
+      msg.textContent = error.message
+      return
+    }
 
-  app.innerHTML = `
-    <main class="login">
-      <div class="box">
+    await start()
+  }
 
-        <h1>🔑 Recuperar senha</h1>
-
-        <p>
-          Informe seu e-mail e enviaremos
-          um link para criar uma nova senha.
-        </p>
-
-        <input
-          id="recovery-email"
-          type="email"
-          placeholder="E-mail"
-        >
-
-        <button id="enviar-recuperacao">
-          Enviar link
-        </button>
-
-        <button
-          id="voltar-login"
-          type="button"
-          style="margin-top:10px;"
-        >
-          ← Voltar para o login
-        </button>
-
-        <div id="recovery-msg"></div>
-
-      </div>
-    </main>
-  `
-
-  document.querySelector('#voltar-login').onclick =
-    login
-
-  document.querySelector('#enviar-recuperacao').onclick =
+  document.querySelector('#esqueci-senha').onclick =
     async () => {
-
-      const email =
-        document.querySelector('#recovery-email')
-          .value.trim()
-
-      const msg =
-        document.querySelector('#recovery-msg')
+      const email = document.querySelector('#email').value.trim()
+      const msg = document.querySelector('#msg')
 
       if (!email) {
         msg.textContent =
-          '⚠️ Informe seu e-mail.'
+          'Digite seu e-mail primeiro.'
         return
       }
 
-      msg.textContent =
-        '⏳ Enviando...'
+      msg.textContent = 'Enviando link...'
 
       const { error } =
         await supabase.auth.resetPasswordForEmail(
           email,
           {
-            redirectTo: SITE_URL
+            redirectTo: `${SITE_URL}/`
           }
         )
 
       if (error) {
+        msg.textContent = error.message
+      } else {
         msg.textContent =
-          '❌ ' + error.message
-        return
+          '✅ Enviamos um link para seu e-mail.'
       }
-
-      msg.textContent =
-        '✅ Link enviado! Verifique seu e-mail e também a caixa de spam.'
     }
 }
 
-/* =========================
-   NOVA SENHA
-========================= */
-
-function showUpdatePassword() {
-
-  app.innerHTML = `
-    <main class="login">
-      <div class="box">
-
-        <h1>🔐 Nova senha</h1>
-
-        <input
-          id="new-password"
-          type="password"
-          placeholder="Nova senha"
-        >
-
-        <input
-          id="confirm-password"
-          type="password"
-          placeholder="Confirmar nova senha"
-        >
-
-        <button id="salvar-nova-senha">
-          Alterar senha
-        </button>
-
-        <div id="password-msg"></div>
-
-      </div>
-    </main>
-  `
-
-  document.querySelector('#salvar-nova-senha').onclick =
-    async () => {
-
-      const password =
-        document.querySelector('#new-password')
-          .value
-
-      const confirm =
-        document.querySelector('#confirm-password')
-          .value
-
-      const msg =
-        document.querySelector('#password-msg')
-
-      if (password.length < 6) {
-        msg.textContent =
-          '⚠️ A senha precisa ter pelo menos 6 caracteres.'
-        return
-      }
-
-      if (password !== confirm) {
-        msg.textContent =
-          '⚠️ As senhas não conferem.'
-        return
-      }
-
-      msg.textContent =
-        '⏳ Alterando senha...'
-
-      const { error } =
-        await supabase.auth.updateUser({
-          password
-        })
-
-      if (error) {
-        msg.textContent =
-          '❌ ' + error.message
-        return
-      }
-
-      msg.textContent =
-        '✅ Senha alterada com sucesso!'
-
-      setTimeout(start, 1500)
-    }
-}
-
-/* =========================
+/* =========================================================
    PERFIL
-========================= */
+========================================================= */
 
-async function carregarPerfil() {
-
+async function loadProfile() {
   const {
-    data: { user }
+    data: { user },
+    error: userError
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    currentProfile = null
+  if (userError || !user) {
     return null
   }
 
   const { data, error } =
     await supabase
       .from('profiles')
-      .select(`
-        id,
-        name,
-        role,
-        active,
-        clinic_id
-      `)
+      .select('*')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
   if (error) {
     console.error(error)
-    currentProfile = null
     return null
   }
-
-  currentProfile = data
 
   return data
 }
 
-function isManager() {
-
-  if (!currentProfile) return false
-
-  return [
-    'supervisora',
-    'recepcionista',
-    'proprietaria'
-  ].includes(currentProfile.role)
-}
-
-/* =========================
-   SISTEMA
-========================= */
+/* =========================================================
+   INÍCIO
+========================================================= */
 
 async function start() {
-
   const {
     data: { session }
   } = await supabase.auth.getSession()
@@ -369,26 +226,29 @@ async function start() {
     return
   }
 
-  const profile =
-    await carregarPerfil()
+  currentProfile = await loadProfile()
 
-  if (!profile) {
+  if (!currentProfile) {
     app.innerHTML = `
       <main class="login">
         <div class="box">
-          <h2>⚠️ Perfil não encontrado</h2>
+
+          <h1>⚠️ Perfil não encontrado</h1>
+
           <p>
             Sua conta ainda não possui um perfil
             configurado no FonoGestão.
           </p>
-          <button id="sair-erro">
+
+          <button id="sair">
             Sair
           </button>
+
         </div>
       </main>
     `
 
-    document.querySelector('#sair-erro').onclick =
+    document.querySelector('#sair').onclick =
       async () => {
         await supabase.auth.signOut()
         login()
@@ -397,12 +257,30 @@ async function start() {
     return
   }
 
+  renderApp()
+}
+
+/* =========================================================
+   APLICAÇÃO
+========================================================= */
+
+function renderApp() {
   app.innerHTML = `
     <div class="layout">
 
       <aside>
 
         <h2>💬 FonoGestão</h2>
+
+        <div style="padding:10px 15px;">
+          <strong>
+            ${escapeHtml(currentProfile.name)}
+          </strong>
+
+          <small style="display:block;">
+            ${roleLabel(currentProfile.role)}
+          </small>
+        </div>
 
         <button
           class="nav active"
@@ -457,27 +335,8 @@ async function start() {
       <section class="main">
 
         <header>
-
-          <div>
-            <h1>FonoGestão</h1>
-
-            <span>
-              ${escapeHtml(profile.name)}
-            </span>
-          </div>
-
-          <span>
-            ${
-              profile.role === 'supervisora'
-                ? 'Supervisora'
-                : profile.role === 'recepcionista'
-                ? 'Recepção'
-                : profile.role === 'proprietaria'
-                ? 'Proprietária'
-                : 'Profissional'
-            }
-          </span>
-
+          <h1>FonoGestão</h1>
+          <span>Sistema online</span>
         </header>
 
         <div id="page"></div>
@@ -489,43 +348,32 @@ async function start() {
 
   document.querySelector('#sair').onclick =
     async () => {
-
       await supabase.auth.signOut()
-
       currentProfile = null
-
       login()
     }
 
-  document.querySelectorAll('.nav')
-    .forEach(button => {
-
-      button.onclick = () =>
-        show(button.dataset.page)
-
-    })
+  document.querySelectorAll('.nav').forEach(button => {
+    button.onclick = () =>
+      show(button.dataset.page)
+  })
 
   show('agenda')
 }
 
-/* =========================
+/* =========================================================
    NAVEGAÇÃO
-========================= */
+========================================================= */
 
-function show(page) {
-
-  document.querySelectorAll('.nav')
-    .forEach(button => {
-
-      button.classList.toggle(
-        'active',
-        button.dataset.page === page
-      )
-
-    })
+async function show(page) {
+  document.querySelectorAll('.nav').forEach(button => {
+    button.classList.toggle(
+      'active',
+      button.dataset.page === page
+    )
+  })
 
   const titles = {
-
     agenda: [
       '📅 Agenda',
       'Agenda semanal por profissional.'
@@ -538,19 +386,18 @@ function show(page) {
 
     evolutions: [
       '📝 Evoluções',
-      'Histórico dos atendimentos.'
+      'Todas as evoluções organizadas por paciente e data.'
     ],
 
     team: [
       '👩‍⚕️ Equipe',
-      'Profissionais da clínica.'
+      'Profissionais cadastrados no FonoGestão.'
     ],
 
     supervision: [
       '🔎 Supervisão',
-      'Acompanhamento da equipe.'
+      'Acompanhe as agendas e evoluções da clínica.'
     ]
-
   }
 
   const [title, description] =
@@ -566,147 +413,581 @@ function show(page) {
 
       <p>${description}</p>
 
-      ${
-        page === 'agenda'
-          ? calendar()
-          : page === 'patients'
-          ? patients()
-          : page === 'evolutions'
-          ? evolutions()
-          : page === 'team'
-          ? team()
-          : supervision()
-      }
+      <div id="page-content">
+        Carregando...
+      </div>
 
     </div>
   `
 
   if (page === 'agenda') {
-    configurarAgenda()
+    await renderAgenda()
   }
 
   if (page === 'patients') {
-    configurarCadastroPaciente()
-    carregarPacientes()
+    await renderPatients()
+  }
+
+  if (page === 'evolutions') {
+    await renderEvolutions()
   }
 
   if (page === 'team') {
-    configurarCadastroProfissional()
+    await renderTeam()
+  }
+
+  if (page === 'supervision') {
+    await renderSupervision()
   }
 }
 
-/* =========================
+/* =========================================================
    AGENDA
-========================= */
+========================================================= */
 
-let agendaDate = new Date()
+async function renderAgenda() {
+  const container =
+    document.querySelector('#page-content')
 
-function calendar() {
+  const professionals =
+    await getProfessionals()
 
-  const days =
-    getWeekDays(agendaDate)
+  const weekDates = getWeekDates()
 
-  const manager =
-    isManager()
+  const firstDate =
+    dateInputValue(weekDates[0])
 
-  return `
-    <div class="toolbar">
+  const lastDate =
+    dateInputValue(weekDates[6])
 
-      <button id="agenda-hoje">
-        Hoje
-      </button>
+  let query =
+    supabase
+      .from('appointments')
+      .select('*')
+      .gte('appointment_date', firstDate)
+      .lte('appointment_date', lastDate)
+      .order('appointment_date')
+      .order('start_time')
 
-      <button id="agenda-anterior">
-        ‹
-      </button>
+  if (isProfessional()) {
+    query = query.eq(
+      'professional_id',
+      currentProfile.id
+    )
+  }
 
-      <button id="agenda-proxima">
-        ›
-      </button>
+  const { data: appointments, error } =
+    await query
 
-      ${
-        manager
-          ? `
-            <select id="filtro-profissional">
-              <option value="all">
-                Todas as profissionais
-              </option>
-            </select>
+  if (error) {
+    container.innerHTML =
+      `<div class="box">❌ ${escapeHtml(error.message)}</div>`
+    return
+  }
+
+  const patientIds =
+    [...new Set(
+      (appointments || [])
+        .map(a => a.patient_id)
+        .filter(Boolean)
+    )]
+
+  let patientsMap = {}
+
+  if (patientIds.length) {
+    const { data: patients } =
+      await supabase
+        .from('patients')
+        .select('id,name,cpf')
+        .in('id', patientIds)
+
+    ;(patients || []).forEach(patient => {
+      patientsMap[patient.id] = patient
+    })
+  }
+
+  const professionalMap = {}
+
+  professionals.forEach(professional => {
+    professionalMap[professional.id] =
+      professional.name
+  })
+
+  container.innerHTML = `
+    <div class="box">
+
+      <div class="toolbar">
+
+        <button id="hoje">
+          Hoje
+        </button>
+
+        <button id="anterior">
+          ‹
+        </button>
+
+        <strong>
+          ${formatDate(firstDate)}
+          —
+          ${formatDate(lastDate)}
+        </strong>
+
+        <button id="proxima">
+          ›
+        </button>
+
+        ${
+          isManager()
+            ? `
+              <select id="filtro-profissional">
+                <option value="">
+                  Todas as profissionais
+                </option>
+
+                ${professionals.map(p => `
+                  <option value="${p.id}">
+                    ${escapeHtml(p.name)}
+                  </option>
+                `).join('')}
+              </select>
+            `
+            : `
+              <span>
+                ${escapeHtml(currentProfile.name)}
+              </span>
+            `
+        }
+
+        <button id="novo-agendamento">
+          ➕ Agendar
+        </button>
+
+      </div>
+
+      <div
+        id="form-agendamento"
+        style="display:none; margin:20px 0;"
+      ></div>
+
+      <div class="calendar">
+
+        ${weekDates.map(date => {
+
+          const dateValue =
+            dateInputValue(date)
+
+          let dayAppointments =
+            (appointments || [])
+              .filter(a =>
+                a.appointment_date === dateValue
+              )
+
+          return `
+            <div class="calendar-day">
+
+              <h3>
+                ${date.toLocaleDateString(
+                  'pt-BR',
+                  {
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: '2-digit'
+                  }
+                )}
+              </h3>
+
+              ${
+                dayAppointments.length
+                  ? dayAppointments.map(a => {
+
+                      const patient =
+                        patientsMap[a.patient_id]
+
+                      return `
+                        <div class="appointment">
+
+                          <strong>
+                            ${a.start_time?.slice(0,5)}
+                            ${
+                              a.end_time
+                                ? ` - ${a.end_time.slice(0,5)}`
+                                : ''
+                            }
+                          </strong>
+
+                          <div>
+                            ${
+                              escapeHtml(
+                                patient?.name ||
+                                'Paciente'
+                              )
+                            }
+                          </div>
+
+                          ${
+                            patient?.cpf
+                              ? `
+                                <small>
+                                  CPF:
+                                  ${escapeHtml(patient.cpf)}
+                                </small>
+                              `
+                              : ''
+                          }
+
+                          ${
+                            isManager()
+                              ? `
+                                <small>
+                                  👩‍⚕️
+                                  ${escapeHtml(
+                                    professionalMap[
+                                      a.professional_id
+                                    ] || ''
+                                  )}
+                                </small>
+                              `
+                              : ''
+                          }
+
+                          <small>
+                            ${a.status}
+                          </small>
+
+                        </div>
+                      `
+                    }).join('')
+                  : `
+                    <div class="empty">
+                      Nenhum atendimento
+                    </div>
+                  `
+              }
+
+            </div>
           `
-          : `
-            <strong>
-              Minha agenda
-            </strong>
-          `
-      }
+        }).join('')}
 
-      <button id="novo-agendamento">
-        ➕ Novo agendamento
-      </button>
+      </div>
 
     </div>
+  `
 
-    <div
-      id="form-agendamento"
-      class="box"
-      style="display:none; margin-bottom:20px;"
-    >
+  document.querySelector('#hoje').onclick =
+    () => {
+      currentWeek = new Date()
+      renderAgenda()
+    }
 
+  document.querySelector('#anterior').onclick =
+    () => {
+      currentWeek.setDate(
+        currentWeek.getDate() - 7
+      )
+      renderAgenda()
+    }
+
+  document.querySelector('#proxima').onclick =
+    () => {
+      currentWeek.setDate(
+        currentWeek.getDate() + 7
+      )
+      renderAgenda()
+    }
+
+  const filtro =
+    document.querySelector(
+      '#filtro-profissional'
+    )
+
+  if (filtro) {
+    filtro.onchange = () => {
+      const value = filtro.value
+
+      document
+        .querySelectorAll('.appointment')
+        .forEach(() => {})
+
+      renderAgendaFiltrada(value)
+    }
+  }
+
+  document.querySelector(
+    '#novo-agendamento'
+  ).onclick = () => {
+    mostrarFormularioAgendamento(
+      professionals
+    )
+  }
+}
+
+/* =========================================================
+   FILTRO DA AGENDA
+========================================================= */
+
+async function renderAgendaFiltrada(
+  professionalId
+) {
+  const container =
+    document.querySelector('#page-content')
+
+  const professionals =
+    await getProfessionals()
+
+  const weekDates = getWeekDates()
+
+  const firstDate =
+    dateInputValue(weekDates[0])
+
+  const lastDate =
+    dateInputValue(weekDates[6])
+
+  let query =
+    supabase
+      .from('appointments')
+      .select('*')
+      .gte('appointment_date', firstDate)
+      .lte('appointment_date', lastDate)
+      .order('appointment_date')
+      .order('start_time')
+
+  if (professionalId) {
+    query = query.eq(
+      'professional_id',
+      professionalId
+    )
+  }
+
+  const { data: appointments } =
+    await query
+
+  const patientIds =
+    [...new Set(
+      (appointments || [])
+        .map(a => a.patient_id)
+        .filter(Boolean)
+    )]
+
+  let patientsMap = {}
+
+  if (patientIds.length) {
+    const { data: patients } =
+      await supabase
+        .from('patients')
+        .select('id,name,cpf')
+        .in('id', patientIds)
+
+    ;(patients || []).forEach(p => {
+      patientsMap[p.id] = p
+    })
+  }
+
+  const professionalMap = {}
+
+  professionals.forEach(p => {
+    professionalMap[p.id] = p.name
+  })
+
+  const appointmentElements =
+    document.querySelectorAll('.calendar-day')
+
+  appointmentElements.forEach(dayElement => {
+    const dateText =
+      dayElement.dataset?.date
+  })
+
+  await renderAgendaComFiltro(
+    professionalId,
+    appointments,
+    patientsMap,
+    professionalMap
+  )
+}
+
+async function renderAgendaComFiltro(
+  professionalId,
+  appointments,
+  patientsMap,
+  professionalMap
+) {
+  const weekDates = getWeekDates()
+
+  const days =
+    document.querySelectorAll('.calendar-day')
+
+  days.forEach((dayElement, index) => {
+
+    const dateValue =
+      dateInputValue(weekDates[index])
+
+    const list =
+      appointments.filter(
+        a => a.appointment_date === dateValue
+      )
+
+    dayElement.innerHTML = `
       <h3>
-        ➕ Novo agendamento
+        ${weekDates[index].toLocaleDateString(
+          'pt-BR',
+          {
+            weekday: 'short',
+            day: '2-digit',
+            month: '2-digit'
+          }
+        )}
       </h3>
 
       ${
-        manager
-          ? `
-            <label>Profissional</label>
+        list.length
+          ? list.map(a => `
+              <div class="appointment">
 
-            <select id="ag-profissional">
-              <option value="">
-                Carregando profissionais...
-              </option>
-            </select>
+                <strong>
+                  ${a.start_time?.slice(0,5)}
+                  ${
+                    a.end_time
+                      ? ` - ${a.end_time.slice(0,5)}`
+                      : ''
+                  }
+                </strong>
+
+                <div>
+                  ${escapeHtml(
+                    patientsMap[a.patient_id]?.name ||
+                    'Paciente'
+                  )}
+                </div>
+
+                ${
+                  patientsMap[a.patient_id]?.cpf
+                    ? `
+                      <small>
+                        CPF:
+                        ${escapeHtml(
+                          patientsMap[
+                            a.patient_id
+                          ].cpf
+                        )}
+                      </small>
+                    `
+                    : ''
+                }
+
+                ${
+                  isManager()
+                    ? `
+                      <small>
+                        👩‍⚕️
+                        ${escapeHtml(
+                          professionalMap[
+                            a.professional_id
+                          ] || ''
+                        )}
+                      </small>
+                    `
+                    : ''
+                }
+
+              </div>
+            `
+          ).join('')
+          : `
+            <div class="empty">
+              Nenhum atendimento
+            </div>
           `
-          : ''
       }
+    `
+  })
+}
+
+/* =========================================================
+   FORMULÁRIO DE AGENDAMENTO
+========================================================= */
+
+async function mostrarFormularioAgendamento(
+  professionals
+) {
+  const form =
+    document.querySelector(
+      '#form-agendamento'
+    )
+
+  const patients =
+    await getPatients()
+
+  form.style.display = 'block'
+
+  form.innerHTML = `
+    <div class="box">
+
+      <h3>📅 Novo agendamento</h3>
 
       <label>Paciente</label>
 
       <select id="ag-paciente">
         <option value="">
-          Carregando pacientes...
+          Selecione o paciente
         </option>
+
+        ${patients.map(p => `
+          <option value="${p.id}">
+            ${escapeHtml(p.name)}
+          </option>
+        `).join('')}
       </select>
+
+      ${
+        isManager()
+          ? `
+            <label>Profissional</label>
+
+            <select id="ag-profissional">
+
+              ${professionals.map(p => `
+                <option value="${p.id}">
+                  ${escapeHtml(p.name)}
+                </option>
+              `).join('')}
+
+            </select>
+          `
+          : `
+            <input
+              type="hidden"
+              id="ag-profissional"
+              value="${currentProfile.id}"
+            >
+          `
+      }
 
       <label>Data</label>
 
       <input
         id="ag-data"
         type="date"
-        value="${formatDate(new Date())}"
+        value="${dateInputValue(new Date())}"
       >
 
-      <label>Horário inicial</label>
+      <label>Horário de início</label>
 
       <input
         id="ag-inicio"
         type="time"
-        value="08:00"
       >
 
-      <label>Horário final</label>
+      <label>Horário de término</label>
 
       <input
         id="ag-fim"
         type="time"
-        value="08:50"
       >
 
       <button id="salvar-agendamento">
-        💾 Agendar
+        💾 Salvar agendamento
       </button>
 
-      <button id="cancelar-agendamento">
+      <button id="fechar-agendamento">
         Cancelar
       </button>
 
@@ -716,1468 +997,951 @@ function calendar() {
       ></div>
 
     </div>
-
-    <div class="calendar">
-
-      <div class="days">
-
-        ${days.map(day => `
-          <b>
-            ${day.toLocaleDateString('pt-BR', {
-              weekday: 'short'
-            })}
-            ${formatDateBR(day)}
-          </b>
-        `).join('')}
-
-      </div>
-
-      <div id="agenda-atendimentos">
-        ⏳ Carregando agenda...
-      </div>
-
-      <div class="legend">
-
-        <span>🔵 Agendado</span>
-
-        <span>🟢 Atendido</span>
-
-        <span>🟡 Falta</span>
-
-        <span>🔴 Cancelado</span>
-
-      </div>
-
-    </div>
   `
-}
-
-async function configurarAgenda() {
-
-  const hoje =
-    document.querySelector('#agenda-hoje')
-
-  const anterior =
-    document.querySelector('#agenda-anterior')
-
-  const proxima =
-    document.querySelector('#agenda-proxima')
-
-  const novo =
-    document.querySelector('#novo-agendamento')
-
-  const cancelar =
-    document.querySelector('#cancelar-agendamento')
-
-  const salvar =
-    document.querySelector('#salvar-agendamento')
-
-  const filtro =
-    document.querySelector('#filtro-profissional')
-
-  if (hoje) {
-    hoje.onclick = () => {
-
-      agendaDate = new Date()
-
-      show('agenda')
-    }
-  }
-
-  if (anterior) {
-    anterior.onclick = () => {
-
-      agendaDate.setDate(
-        agendaDate.getDate() - 7
-      )
-
-      show('agenda')
-    }
-  }
-
-  if (proxima) {
-    proxima.onclick = () => {
-
-      agendaDate.setDate(
-        agendaDate.getDate() + 7
-      )
-
-      show('agenda')
-    }
-  }
-
-  if (novo) {
-
-    novo.onclick = async () => {
-
-      const form =
-        document.querySelector('#form-agendamento')
-
-      form.style.display = 'block'
-
-      await carregarOpcoesAgendamento()
-    }
-  }
-
-  if (cancelar) {
-
-    cancelar.onclick = () => {
-
-      document.querySelector(
-        '#form-agendamento'
-      ).style.display = 'none'
-    }
-  }
-
-  if (salvar) {
-
-    salvar.onclick =
-      salvarAgendamento
-  }
-
-  if (filtro) {
-
-    filtro.onchange =
-      carregarAgenda
-  }
-
-  await carregarOpcoesAgendamento()
-
-  await carregarAgenda()
-}
-
-/* =========================
-   OPÇÕES DO AGENDAMENTO
-========================= */
-
-async function carregarOpcoesAgendamento() {
-
-  const pacienteSelect =
-    document.querySelector('#ag-paciente')
-
-  if (!pacienteSelect) return
-
-  const profissionalSelect =
-    document.querySelector('#ag-profissional')
-
-  if (profissionalSelect) {
-
-    const { data, error } =
-      await supabase
-        .from('profiles')
-        .select(
-          'id, name, role'
-        )
-        .eq(
-          'clinic_id',
-          currentProfile.clinic_id
-        )
-        .eq(
-          'active',
-          true
-        )
-        .order('name')
-
-    if (!error) {
-
-      profissionalSelect.innerHTML =
-        data
-          .filter(
-            p =>
-              [
-                'profissional',
-                'estagiaria'
-              ].includes(p.role)
-          )
-          .map(p => `
-            <option value="${p.id}">
-              ${escapeHtml(p.name)}
-            </option>
-          `)
-          .join('')
-
-      profissionalSelect.value =
-        currentProfile.id
-    }
-  }
-
-  const query =
-    supabase
-      .from('patients')
-      .select(
-        'id, name, professional_id'
-      )
-      .order('name')
-
-  if (!isManager()) {
-
-    query.eq(
-      'professional_id',
-      currentProfile.id
-    )
-  } else {
-
-    query.eq(
-      'clinic_id',
-      currentProfile.clinic_id
-    )
-  }
-
-  const {
-    data: patientsData,
-    error
-  } = await query
-
-  if (error) {
-
-    pacienteSelect.innerHTML =
-      '<option>Erro ao carregar pacientes</option>'
-
-    return
-  }
-
-  pacienteSelect.innerHTML = `
-
-    <option value="">
-      Selecione o paciente
-    </option>
-
-    ${
-      patientsData
-        .map(patient => `
-          <option value="${patient.id}">
-            ${escapeHtml(patient.name)}
-          </option>
-        `)
-        .join('')
-    }
-
-  `
-}
-
-/* =========================
-   SALVAR AGENDAMENTO
-========================= */
-
-async function salvarAgendamento() {
-
-  const resultado =
-    document.querySelector(
-      '#resultado-agendamento'
-    )
-
-  const patientId =
-    document.querySelector(
-      '#ag-paciente'
-    ).value
-
-  const date =
-    document.querySelector(
-      '#ag-data'
-    ).value
-
-  const startTime =
-    document.querySelector(
-      '#ag-inicio'
-    ).value
-
-  const endTime =
-    document.querySelector(
-      '#ag-fim'
-    ).value
-
-  const professionalSelect =
-    document.querySelector(
-      '#ag-profissional'
-    )
-
-  const professionalId =
-    professionalSelect
-      ? professionalSelect.value
-      : currentProfile.id
-
-  if (!patientId) {
-
-    resultado.textContent =
-      '⚠️ Selecione o paciente.'
-
-    return
-  }
-
-  if (!date || !startTime || !endTime) {
-
-    resultado.textContent =
-      '⚠️ Preencha data e horários.'
-
-    return
-  }
-
-  if (startTime >= endTime) {
-
-    resultado.textContent =
-      '⚠️ O horário final deve ser depois do horário inicial.'
-
-    return
-  }
-
-  resultado.textContent =
-    '⏳ Salvando agendamento...'
-
-  const { error } =
-    await supabase
-      .from('appointments')
-      .insert({
-
-        patient_id:
-          patientId,
-
-        professional_id:
-          professionalId,
-
-        appointment_date:
-          date,
-
-        start_time:
-          startTime,
-
-        end_time:
-          endTime,
-
-        status:
-          'agendado',
-
-        clinic_id:
-          currentProfile.clinic_id
-
-      })
-
-  if (error) {
-
-    resultado.textContent =
-      '❌ ' + error.message
-
-    return
-  }
-
-  resultado.textContent =
-    '✅ Agendamento realizado!'
 
   document.querySelector(
-    '#ag-paciente'
-  ).value = ''
+    '#fechar-agendamento'
+  ).onclick = () => {
+    form.style.display = 'none'
+  }
 
-  await carregarAgenda()
-}
+  document.querySelector(
+    '#salvar-agendamento'
+  ).onclick = async () => {
 
-/* =========================
-   CARREGAR AGENDA
-========================= */
-
-async function carregarAgenda() {
-
-  const container =
-    document.querySelector(
-      '#agenda-atendimentos'
-    )
-
-  if (!container) return
-
-  container.innerHTML =
-    '⏳ Carregando agenda...'
-
-  const days =
-    getWeekDays(agendaDate)
-
-  const firstDate =
-    formatDate(days[0])
-
-  const lastDate =
-    formatDate(days[6])
-
-  let query =
-    supabase
-      .from('appointments')
-      .select(`
-        id,
-        patient_id,
-        professional_id,
-        appointment_date,
-        start_time,
-        end_time,
-        status
-      `)
-      .gte(
-        'appointment_date',
-        firstDate
-      )
-      .lte(
-        'appointment_date',
-        lastDate
-      )
-      .eq(
-        'clinic_id',
-        currentProfile.clinic_id
-      )
-      .order(
-        'start_time'
-      )
-
-  if (!isManager()) {
-
-    query =
-      query.eq(
-        'professional_id',
-        currentProfile.id
-      )
-
-  } else {
-
-    const filtro =
+    const patientId =
       document.querySelector(
-        '#filtro-profissional'
+        '#ag-paciente'
+      ).value
+
+    const professionalId =
+      document.querySelector(
+        '#ag-profissional'
+      ).value
+
+    const date =
+      document.querySelector(
+        '#ag-data'
+      ).value
+
+    const startTime =
+      document.querySelector(
+        '#ag-inicio'
+      ).value
+
+    const endTime =
+      document.querySelector(
+        '#ag-fim'
+      ).value
+
+    const result =
+      document.querySelector(
+        '#resultado-agendamento'
       )
 
     if (
-      filtro &&
-      filtro.value !== 'all'
+      !patientId ||
+      !professionalId ||
+      !date ||
+      !startTime
     ) {
-
-      query =
-        query.eq(
-          'professional_id',
-          filtro.value
-        )
+      result.textContent =
+        '⚠️ Preencha paciente, profissional, data e horário.'
+      return
     }
-  }
 
-  const {
-    data: appointments,
-    error
-  } = await query
+    result.textContent =
+      '⏳ Salvando...'
 
-  if (error) {
-
-    container.innerHTML =
-      `
-        <p>
-          ❌ Erro ao carregar agenda:
-          ${escapeHtml(error.message)}
-        </p>
-      `
-
-    return
-  }
-
-  if (
-    !appointments ||
-    appointments.length === 0
-  ) {
-
-    container.innerHTML = `
-      <p class="empty">
-        Nenhum atendimento agendado nesta semana.
-      </p>
-    `
-
-    return
-  }
-
-  const patientIds =
-    [
-      ...new Set(
-        appointments.map(
-          a => a.patient_id
-        )
-      )
-    ]
-
-  const professionalIds =
-    [
-      ...new Set(
-        appointments.map(
-          a => a.professional_id
-        )
-      )
-    ]
-
-  const {
-    data: patientsData
-  } =
-    await supabase
-      .from('patients')
-      .select(
-        'id, name'
-      )
-      .in(
-        'id',
-        patientIds
-      )
-
-  const {
-    data: professionalsData
-  } =
-    await supabase
-      .from('profiles')
-      .select(
-        'id, name'
-      )
-      .in(
-        'id',
-        professionalIds
-      )
-
-  const patientsMap =
-    Object.fromEntries(
-      (patientsData || [])
-        .map(
-          p => [p.id, p.name]
-        )
-    )
-
-  const professionalsMap =
-    Object.fromEntries(
-      (professionalsData || [])
-        .map(
-          p => [p.id, p.name]
-        )
-    )
-
-  container.innerHTML = days
-    .map(day => {
-
-      const date =
-        formatDate(day)
-
-      const dayAppointments =
-        appointments.filter(
-          a =>
-            a.appointment_date === date
-        )
-
-      return `
-        <div
-          class="box"
-          style="margin-top:12px;"
-        >
-
-          <h3>
-            ${
-              day.toLocaleDateString(
-                'pt-BR',
-                {
-                  weekday: 'long',
-                  day: '2-digit',
-                  month: '2-digit'
-                }
-              )
-            }
-          </h3>
-
-          ${
-            dayAppointments.length === 0
-              ? `
-                <p>
-                  Nenhum atendimento.
-                </p>
-              `
-              : dayAppointments
-                .map(a => {
-
-                  const icon =
-                    a.status === 'atendido'
-                      ? '🟢'
-                      : a.status === 'falta'
-                      ? '🟡'
-                      : a.status === 'cancelado'
-                      ? '🔴'
-                      : '🔵'
-
-                  return `
-                    <div
-                      style="
-                        padding:12px;
-                        margin-top:8px;
-                        border:1px solid #ddd;
-                        border-radius:8px;
-                      "
-                    >
-
-                      <strong>
-                        ${icon}
-                        ${a.start_time.slice(0,5)}
-                        -
-                        ${a.end_time
-                          ? a.end_time.slice(0,5)
-                          : ''
-                        }
-                      </strong>
-
-                      <p>
-                        👤
-                        ${escapeHtml(
-                          patientsMap[a.patient_id]
-                          || 'Paciente'
-                        )}
-                      </p>
-
-                      ${
-                        isManager()
-                          ? `
-                            <p>
-                              👩‍⚕️
-                              ${escapeHtml(
-                                professionalsMap[
-                                  a.professional_id
-                                ]
-                                || 'Profissional'
-                              )}
-                            </p>
-                          `
-                          : ''
-                      }
-
-                      <select
-                        class="status-agendamento"
-                        data-id="${a.id}"
-                      >
-
-                        <option
-                          value="agendado"
-                          ${
-                            a.status === 'agendado'
-                              ? 'selected'
-                              : ''
-                          }
-                        >
-                          🔵 Agendado
-                        </option>
-
-                        <option
-                          value="atendido"
-                          ${
-                            a.status === 'atendido'
-                              ? 'selected'
-                              : ''
-                          }
-                        >
-                          🟢 Atendido
-                        </option>
-
-                        <option
-                          value="falta"
-                          ${
-                            a.status === 'falta'
-                              ? 'selected'
-                              : ''
-                          }
-                        >
-                          🟡 Falta
-                        </option>
-
-                        <option
-                          value="cancelado"
-                          ${
-                            a.status === 'cancelado'
-                              ? 'selected'
-                              : ''
-                          }
-                        >
-                          🔴 Cancelado
-                        </option>
-
-                      </select>
-
-                    </div>
-                  `
-                })
-                .join('')
-          }
-
-        </div>
-      `
-    })
-    .join('')
-
-  document.querySelectorAll(
-    '.status-agendamento'
-  ).forEach(select => {
-
-    select.onchange =
-      async () => {
-
-        const { error } =
-          await supabase
-            .from('appointments')
-            .update({
-              status:
-                select.value
-            })
-            .eq(
-              'id',
-              select.dataset.id
-            )
-
-        if (error) {
-
-          alert(
-            'Erro ao alterar status: ' +
-            error.message
-          )
-
-          return
-        }
-
-        await carregarAgenda()
-      }
-  })
-
-  const filtro =
-    document.querySelector(
-      '#filtro-profissional'
-    )
-
-  if (
-    filtro &&
-    filtro.options.length <= 1
-  ) {
-
-    const {
-      data: professionals
-    } =
+    const { error } =
       await supabase
-        .from('profiles')
-        .select(
-          'id, name, role'
-        )
-        .eq(
-          'clinic_id',
-          currentProfile.clinic_id
-        )
-        .eq(
-          'active',
-          true
-        )
-        .order('name')
+        .from('appointments')
+        .insert({
+          patient_id: patientId,
+          professional_id: professionalId,
+          appointment_date: date,
+          start_time: startTime,
+          end_time: endTime || null,
+          status: 'agendado',
+          clinic_id: currentProfile.clinic_id
+        })
 
-    professionals
-      ?.filter(
-        p =>
-          [
-            'profissional',
-            'estagiaria'
-          ].includes(p.role)
-      )
-      .forEach(p => {
+    if (error) {
+      result.textContent =
+        '❌ ' + error.message
+      return
+    }
 
-        const option =
-          document.createElement(
-            'option'
-          )
+    result.textContent =
+      '✅ Agendamento salvo!'
 
-        option.value = p.id
-
-        option.textContent =
-          p.name
-
-        filtro.appendChild(option)
-      })
+    setTimeout(() => {
+      form.style.display = 'none'
+      renderAgenda()
+    }, 700)
   }
 }
 
-/* =========================
+/* =========================================================
    PACIENTES
-========================= */
+========================================================= */
 
-function patients() {
+async function getPatients() {
+  let query =
+    supabase
+      .from('patients')
+      .select('*')
+      .order('name')
 
-  return `
+  if (isProfessional()) {
+    query = query.eq(
+      'professional_id',
+      currentProfile.id
+    )
+  }
+
+  const { data, error } =
+    await query
+
+  if (error) {
+    console.error(error)
+    return []
+  }
+
+  return data || []
+}
+
+async function renderPatients() {
+  const container =
+    document.querySelector('#page-content')
+
+  const patients =
+    await getPatients()
+
+  const professionals =
+    await getProfessionals()
+
+  const professionalMap = {}
+
+  professionals.forEach(p => {
+    professionalMap[p.id] = p.name
+  })
+
+  container.innerHTML = `
     <div class="box">
 
-      <h3>👥 Pacientes</h3>
+      <div
+        style="
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+        "
+      >
 
-      <p>
-        ${
-          isManager()
-            ? 'Pacientes de toda a clínica.'
-            : 'Seus pacientes.'
-        }
-      </p>
+        <h3>👥 Meus pacientes</h3>
 
-      <button id="novo-paciente">
-        ➕ Cadastrar paciente
-      </button>
+        <button id="novo-paciente">
+          ➕ Cadastrar paciente
+        </button>
+
+      </div>
 
       <div
         id="form-paciente"
         style="display:none; margin-top:20px;"
-      >
+      ></div>
 
-        <h3>Novo paciente</h3>
+      ${
+        patients.length
+          ? `
+            <div style="margin-top:20px;">
 
-        <input
-          id="paciente-nome"
-          type="text"
-          placeholder="Nome completo"
-        >
+              ${patients.map(p => `
+                <div class="appointment">
 
-        <input
-          id="paciente-cpf"
-          type="text"
-          placeholder="CPF"
-          maxlength="14"
-        >
+                  <strong>
+                    ${escapeHtml(p.name)}
+                  </strong>
 
-        <input
-          id="paciente-nascimento"
-          type="date"
-        >
+                  ${
+                    p.cpf
+                      ? `
+                        <div>
+                          CPF:
+                          ${escapeHtml(p.cpf)}
+                        </div>
+                      `
+                      : ''
+                  }
 
-        <input
-          id="paciente-responsavel"
-          type="text"
-          placeholder="Nome do responsável"
-        >
+                  ${
+                    p.birth_date
+                      ? `
+                        <div>
+                          Nascimento:
+                          ${formatDate(p.birth_date)}
+                        </div>
+                      `
+                      : ''
+                  }
 
-        <input
-          id="paciente-telefone"
-          type="tel"
-          placeholder="Telefone"
-        >
+                  ${
+                    isManager()
+                      ? `
+                        <small>
+                          👩‍⚕️
+                          ${escapeHtml(
+                            professionalMap[
+                              p.professional_id
+                            ] || 'Sem profissional'
+                          )}
+                        </small>
+                      `
+                      : ''
+                  }
 
-        <textarea
-          id="paciente-observacoes"
-          placeholder="Observações"
-          rows="4"
-        ></textarea>
+                </div>
+              `).join('')}
 
-        ${
-          isManager()
-            ? `
-              <label>
-                Profissional responsável
-              </label>
-
-              <select id="paciente-profissional">
-                <option>
-                  Carregando...
-                </option>
-              </select>
-            `
-            : ''
-        }
-
-        <button id="salvar-paciente">
-          💾 Salvar paciente
-        </button>
-
-        <button id="cancelar-paciente">
-          Cancelar
-        </button>
-
-        <div
-          id="resultado-paciente"
-          style="margin-top:15px;"
-        ></div>
-
-      </div>
-
-      <div
-        id="lista-pacientes"
-        style="margin-top:25px;"
-      >
-        ⏳ Carregando pacientes...
-      </div>
+            </div>
+          `
+          : `
+            <p>
+              Nenhum paciente cadastrado.
+            </p>
+          `
+      }
 
     </div>
   `
+
+  document.querySelector(
+    '#novo-paciente'
+  ).onclick = () =>
+    mostrarFormularioPaciente(
+      professionals
+    )
 }
 
-async function configurarCadastroPaciente() {
+/* =========================================================
+   FORMULÁRIO DE PACIENTE
+========================================================= */
 
-  const novo =
+function mostrarFormularioPaciente(
+  professionals
+) {
+  const form =
     document.querySelector(
-      '#novo-paciente'
+      '#form-paciente'
     )
 
-  if (!novo) return
+  form.style.display = 'block'
 
-  novo.onclick = async () => {
+  form.innerHTML = `
+    <div class="box">
 
-    const form =
-      document.querySelector(
-        '#form-paciente'
-      )
+      <h3>👤 Novo paciente</h3>
 
-    form.style.display =
-      'block'
+      <input
+        id="paciente-nome"
+        type="text"
+        placeholder="Nome completo"
+      >
 
-    novo.style.display =
-      'none'
+      <input
+        id="paciente-cpf"
+        type="text"
+        placeholder="CPF"
+      >
 
-    const select =
-      document.querySelector(
-        '#paciente-profissional'
-      )
+      <label>Data de nascimento</label>
 
-    if (select) {
+      <input
+        id="paciente-nascimento"
+        type="date"
+      >
 
-      const {
-        data
-      } =
-        await supabase
-          .from('profiles')
-          .select(
-            'id, name, role'
-          )
-          .eq(
-            'clinic_id',
-            currentProfile.clinic_id
-          )
-          .eq(
-            'active',
-            true
-          )
-          .order('name')
+      <input
+        id="paciente-responsavel"
+        type="text"
+        placeholder="Nome do responsável"
+      >
 
-      select.innerHTML =
-        data
-          ?.filter(
-            p =>
-              [
-                'profissional',
-                'estagiaria'
-              ].includes(p.role)
-          )
-          .map(
-            p => `
-              <option value="${p.id}">
-                ${escapeHtml(p.name)}
+      <input
+        id="paciente-telefone"
+        type="text"
+        placeholder="Telefone"
+      >
+
+      ${
+        isManager()
+          ? `
+            <label>Profissional responsável</label>
+
+            <select id="paciente-profissional">
+
+              <option value="">
+                Selecione
               </option>
-            `
-          )
-          .join('') || ''
-    }
-  }
+
+              ${professionals.map(p => `
+                <option value="${p.id}">
+                  ${escapeHtml(p.name)}
+                </option>
+              `).join('')}
+
+            </select>
+          `
+          : `
+            <input
+              type="hidden"
+              id="paciente-profissional"
+              value="${currentProfile.id}"
+            >
+          `
+      }
+
+      <textarea
+        id="paciente-observacoes"
+        placeholder="Observações"
+      ></textarea>
+
+      <button id="salvar-paciente">
+        💾 Salvar paciente
+      </button>
+
+      <button id="cancelar-paciente">
+        Cancelar
+      </button>
+
+      <div
+        id="resultado-paciente"
+        style="margin-top:10px;"
+      ></div>
+
+    </div>
+  `
 
   document.querySelector(
     '#cancelar-paciente'
   ).onclick = () => {
-
-    document.querySelector(
-      '#form-paciente'
-    ).style.display = 'none'
-
-    novo.style.display =
-      'inline-block'
+    form.style.display = 'none'
   }
 
   document.querySelector(
     '#salvar-paciente'
-  ).onclick =
-    salvarPaciente
+  ).onclick = async () => {
+
+    const name =
+      document.querySelector(
+        '#paciente-nome'
+      ).value.trim()
+
+    const cpf =
+      document.querySelector(
+        '#paciente-cpf'
+      ).value.trim()
+
+    const birthDate =
+      document.querySelector(
+        '#paciente-nascimento'
+      ).value || null
+
+    const guardian =
+      document.querySelector(
+        '#paciente-responsavel'
+      ).value.trim()
+
+    const phone =
+      document.querySelector(
+        '#paciente-telefone'
+      ).value.trim()
+
+    const professionalId =
+      document.querySelector(
+        '#paciente-profissional'
+      ).value
+
+    const notes =
+      document.querySelector(
+        '#paciente-observacoes'
+      ).value.trim()
+
+    const result =
+      document.querySelector(
+        '#resultado-paciente'
+      )
+
+    if (!name) {
+      result.textContent =
+        '⚠️ Informe o nome do paciente.'
+      return
+    }
+
+    if (!professionalId) {
+      result.textContent =
+        '⚠️ Selecione a profissional responsável.'
+      return
+    }
+
+    result.textContent =
+      '⏳ Salvando paciente...'
+
+    const { data, error } =
+      await supabase
+        .from('patients')
+        .insert({
+          name,
+          cpf: cpf || null,
+          birth_date: birthDate,
+          guardian: guardian || null,
+          phone: phone || null,
+          notes: notes || null,
+          professional_id: professionalId,
+          clinic_id: currentProfile.clinic_id
+        })
+        .select()
+        .single()
+
+    if (error) {
+      result.textContent =
+        '❌ ' + error.message
+      return
+    }
+
+    result.textContent =
+      '✅ Paciente cadastrado com sucesso!'
+
+    /*
+      Depois de cadastrar, perguntamos se deseja
+      colocar o primeiro horário na agenda.
+    */
+
+    setTimeout(() => {
+      form.innerHTML = `
+        <div class="box">
+
+          <h3>
+            ✅ Paciente cadastrado!
+          </h3>
+
+          <p>
+            Deseja cadastrar um horário
+            para ${escapeHtml(data.name)}?
+          </p>
+
+          <button id="sim-agendar">
+            📅 Sim, agendar
+          </button>
+
+          <button id="nao-agendar">
+            Agora não
+          </button>
+
+        </div>
+      `
+
+      document.querySelector(
+        '#sim-agendar'
+      ).onclick = async () => {
+
+        form.innerHTML = `
+          <div class="box">
+            Carregando...
+          </div>
+        `
+
+        const professionalList =
+          await getProfessionals()
+
+        const patients =
+          await getPatients()
+
+        form.innerHTML = `
+          <div class="box">
+
+            <h3>
+              📅 Agendar ${escapeHtml(data.name)}
+            </h3>
+
+            <select id="ag-paciente">
+
+              ${patients.map(p => `
+                <option
+                  value="${p.id}"
+                  ${p.id === data.id ? 'selected' : ''}
+                >
+                  ${escapeHtml(p.name)}
+                </option>
+              `).join('')}
+
+            </select>
+
+            ${
+              isManager()
+                ? `
+                  <select id="ag-profissional">
+
+                    ${professionalList.map(p => `
+                      <option
+                        value="${p.id}"
+                        ${p.id === data.professional_id
+                          ? 'selected'
+                          : ''}
+                      >
+                        ${escapeHtml(p.name)}
+                      </option>
+                    `).join('')}
+
+                  </select>
+                `
+                : `
+                  <input
+                    type="hidden"
+                    id="ag-profissional"
+                    value="${currentProfile.id}"
+                  >
+                `
+            }
+
+            <input
+              id="ag-data"
+              type="date"
+              value="${dateInputValue(new Date())}"
+            >
+
+            <input
+              id="ag-inicio"
+              type="time"
+            >
+
+            <input
+              id="ag-fim"
+              type="time"
+            >
+
+            <button id="salvar-agendamento">
+              💾 Salvar horário
+            </button>
+
+            <div
+              id="resultado-agendamento"
+              style="margin-top:10px;"
+            ></div>
+
+          </div>
+        `
+
+        document.querySelector(
+          '#salvar-agendamento'
+        ).onclick = async () => {
+
+          const patientId =
+            document.querySelector(
+              '#ag-paciente'
+            ).value
+
+          const professionalId =
+            document.querySelector(
+              '#ag-profissional'
+            ).value
+
+          const date =
+            document.querySelector(
+              '#ag-data'
+            ).value
+
+          const startTime =
+            document.querySelector(
+              '#ag-inicio'
+            ).value
+
+          const endTime =
+            document.querySelector(
+              '#ag-fim'
+            ).value
+
+          const result =
+            document.querySelector(
+              '#resultado-agendamento'
+            )
+
+          if (
+            !date ||
+            !startTime
+          ) {
+            result.textContent =
+              '⚠️ Informe data e horário.'
+            return
+          }
+
+          const { error } =
+            await supabase
+              .from('appointments')
+              .insert({
+                patient_id: patientId,
+                professional_id: professionalId,
+                appointment_date: date,
+                start_time: startTime,
+                end_time: endTime || null,
+                status: 'agendado',
+                clinic_id:
+                  currentProfile.clinic_id
+              })
+
+          if (error) {
+            result.textContent =
+              '❌ ' + error.message
+            return
+          }
+
+          result.textContent =
+            '✅ Horário salvo!'
+
+          setTimeout(() => {
+            show('agenda')
+          }, 700)
+        }
+      }
+
+      document.querySelector(
+        '#nao-agendar'
+      ).onclick = () => {
+        show('patients')
+      }
+
+    }, 700)
+  }
 }
 
-async function salvarPaciente() {
+/* =========================================================
+   PROFISSIONAIS
+========================================================= */
 
-  const resultado =
-    document.querySelector(
-      '#resultado-paciente'
-    )
-
-  const nome =
-    document.querySelector(
-      '#paciente-nome'
-    ).value.trim()
-
-  const cpf =
-    document.querySelector(
-      '#paciente-cpf'
-    ).value.trim()
-
-  const nascimento =
-    document.querySelector(
-      '#paciente-nascimento'
-    ).value
-
-  const responsavel =
-    document.querySelector(
-      '#paciente-responsavel'
-    ).value.trim()
-
-  const telefone =
-    document.querySelector(
-      '#paciente-telefone'
-    ).value.trim()
-
-  const observacoes =
-    document.querySelector(
-      '#paciente-observacoes'
-    ).value.trim()
-
-  const profissionalSelect =
-    document.querySelector(
-      '#paciente-profissional'
-    )
-
-  const professionalId =
-    profissionalSelect
-      ? profissionalSelect.value
-      : currentProfile.id
-
-  if (!nome || !cpf) {
-
-    resultado.textContent =
-      '⚠️ Nome e CPF são obrigatórios.'
-
-    return
-  }
-
-  resultado.textContent =
-    '⏳ Salvando...'
-
-  const { error } =
+async function getProfessionals() {
+  const { data, error } =
     await supabase
-      .from('patients')
-      .insert({
-
-        name:
-          nome,
-
-        cpf:
-          cpf,
-
-        birth_date:
-          nascimento || null,
-
-        guardian:
-          responsavel || null,
-
-        phone:
-          telefone || null,
-
-        notes:
-          observacoes || null,
-
-        professional_id:
-          professionalId,
-
-        clinic_id:
-          currentProfile.clinic_id
-
-      })
-
-  if (error) {
-
-    resultado.textContent =
-      '❌ ' + error.message
-
-    return
-  }
-
-  resultado.textContent =
-    '✅ Paciente cadastrado!'
-
-  document.querySelector(
-    '#paciente-nome'
-  ).value = ''
-
-  document.querySelector(
-    '#paciente-cpf'
-  ).value = ''
-
-  document.querySelector(
-    '#paciente-nascimento'
-  ).value = ''
-
-  document.querySelector(
-    '#paciente-responsavel'
-  ).value = ''
-
-  document.querySelector(
-    '#paciente-telefone'
-  ).value = ''
-
-  document.querySelector(
-    '#paciente-observacoes'
-  ).value = ''
-
-  await carregarPacientes()
-}
-
-async function carregarPacientes() {
-
-  const lista =
-    document.querySelector(
-      '#lista-pacientes'
-    )
-
-  if (!lista) return
-
-  let query =
-    supabase
-      .from('patients')
-      .select(`
-        id,
-        name,
-        cpf,
-        birth_date,
-        guardian,
-        phone,
-        professional_id
-      `)
+      .from('profiles')
+      .select('id,name,role,clinic_id,active')
       .eq(
         'clinic_id',
         currentProfile.clinic_id
       )
+      .eq('active', true)
+      .in(
+        'role',
+        ['profissional', 'estagiaria']
+      )
       .order('name')
 
-  if (!isManager()) {
-
-    query =
-      query.eq(
-        'professional_id',
-        currentProfile.id
-      )
-  }
-
-  const {
-    data,
-    error
-  } = await query
-
   if (error) {
-
-    lista.innerHTML =
-      `<p>❌ ${escapeHtml(error.message)}</p>`
-
-    return
+    console.error(error)
+    return []
   }
 
-  if (!data?.length) {
+  return data || []
+}
 
-    lista.innerHTML =
-      '<p>Nenhum paciente cadastrado.</p>'
+async function renderTeam() {
+  const container =
+    document.querySelector('#page-content')
 
-    return
-  }
-
-  lista.innerHTML =
-    data.map(patient => `
-
-      <div
-        class="box"
-        style="margin-top:10px;"
-      >
-
-        <strong>
-          ${escapeHtml(patient.name)}
-        </strong>
-
-        <p>
-          🪪 CPF:
-          ${escapeHtml(
-            patient.cpf || 'Não informado'
-          )}
-        </p>
-
-        <p>
-          🎂 Nascimento:
-          ${
-            patient.birth_date
-              || 'Não informado'
-          }
-        </p>
-
-        <p>
-          👨‍👩‍👧 Responsável:
-          ${
-            escapeHtml(
-              patient.guardian
-              || 'Não informado'
-            )
-          }
-        </p>
-
-        <p>
-          📱 Telefone:
-          ${
-            escapeHtml(
-              patient.phone
-              || 'Não informado'
-            )
-          }
-        </p>
-
+  if (!isManager()) {
+    container.innerHTML = `
+      <div class="box">
+        Acesso não autorizado.
       </div>
+    `
+    return
+  }
 
-    `).join('')
-}
+  const professionals =
+    await getProfessionals()
 
-/* =========================
-   EVOLUÇÕES
-========================= */
-
-function evolutions() {
-
-  return `
-    <div class="box">
-
-      <h3>📝 Evoluções</h3>
-
-      <p>
-        O histórico de evoluções ficará
-        vinculado aos pacientes e atendimentos.
-      </p>
-
-    </div>
-  `
-}
-
-/* =========================
-   EQUIPE
-========================= */
-
-function team() {
-
-  return `
+  container.innerHTML = `
     <div class="box">
 
       <h3>👩‍⚕️ Equipe</h3>
 
       <p>
-        Gerencie os profissionais da clínica.
+        Profissionais da clínica.
       </p>
 
-      <button id="novo-profissional">
-        ➕ Criar profissional
-      </button>
+      ${
+        professionals.map(p => `
+          <div class="appointment">
 
-      <div
-        id="form-profissional"
-        style="display:none; margin-top:20px;"
-      >
+            <strong>
+              ${escapeHtml(p.name)}
+            </strong>
 
-        <h3>Nova profissional</h3>
+            <div>
+              ${roleLabel(p.role)}
+            </div>
 
-        <input
-          id="novo-nome"
-          type="text"
-          placeholder="Nome completo"
-        >
+          </div>
+        `).join('')
+      }
 
-        <input
-          id="novo-email"
-          type="email"
-          placeholder="E-mail"
-        >
+      <p style="margin-top:20px;">
+        Para cadastrar uma nova profissional,
+        utilize o cadastro administrativo já
+        configurado no sistema.
+      </p>
 
-        <input
-          id="nova-senha"
-          type="password"
-          placeholder="Senha"
-        >
+    </div>
+  `
+}
 
-        <select id="novo-papel">
+/* =========================================================
+   EVOLUÇÕES
+========================================================= */
 
-          <option value="profissional">
-            Fonoaudióloga
-          </option>
+async function renderEvolutions() {
+  const container =
+    document.querySelector('#page-content')
 
-          <option value="recepcionista">
-            Recepcionista
-          </option>
+  let query =
+    supabase
+      .from('evolutions')
+      .select('*')
+      .order('evolution_date', {
+        ascending: false
+      })
+      .order('evolution_time', {
+        ascending: false
+      })
 
-          <option value="supervisora">
-            Supervisora
-          </option>
+  if (isProfessional()) {
+    query = query.eq(
+      'professional_id',
+      currentProfile.id
+    )
+  }
 
-          <option value="proprietaria">
-            Proprietária
-          </option>
+  const { data, error } =
+    await query
 
-        </select>
+  if (error) {
+    container.innerHTML =
+      `<div class="box">❌ ${escapeHtml(error.message)}</div>`
+    return
+  }
 
-        <button id="salvar-profissional">
-          💾 Criar usuário
-        </button>
+  const patientIds =
+    [...new Set(
+      (data || [])
+        .map(e => e.patient_id)
+        .filter(Boolean)
+    )]
 
-        <button id="cancelar-profissional">
-          Cancelar
-        </button>
+  let patientsMap = {}
 
-        <div
-          id="resultado-profissional"
-          style="margin-top:15px;"
-        ></div>
+  if (patientIds.length) {
+    const { data: patients } =
+      await supabase
+        .from('patients')
+        .select('id,name')
+        .in('id', patientIds)
+
+    ;(patients || []).forEach(p => {
+      patientsMap[p.id] = p.name
+    })
+  }
+
+  container.innerHTML = `
+    <div class="box">
+
+      <h3>📝 Evoluções</h3>
+
+      ${
+        data?.length
+          ? data.map(e => `
+              <div class="appointment">
+
+                <strong>
+                  ${escapeHtml(
+                    patientsMap[e.patient_id] ||
+                    'Paciente'
+                  )}
+                </strong>
+
+                <div>
+                  ${formatDate(e.evolution_date)}
+                  ${
+                    e.evolution_time
+                      ? ` às ${e.evolution_time.slice(0,5)}`
+                      : ''
+                  }
+                </div>
+
+                <p>
+                  ${escapeHtml(e.text || '')}
+                </p>
+
+                <small>
+                  Status:
+                  ${escapeHtml(e.status || '')}
+                </small>
+
+              </div>
+            `).join('')
+          : `
+            <p>
+              Nenhuma evolução cadastrada.
+            </p>
+          `
+      }
+
+    </div>
+  `
+}
+
+/* =========================================================
+   SUPERVISÃO
+========================================================= */
+
+async function renderSupervision() {
+  const container =
+    document.querySelector('#page-content')
+
+  if (!isManager()) {
+    container.innerHTML = `
+      <div class="box">
+        Acesso não autorizado.
+      </div>
+    `
+    return
+  }
+
+  const professionals =
+    await getProfessionals()
+
+  container.innerHTML = `
+    <div class="box">
+
+      <h3>🔎 Área da supervisão</h3>
+
+      <p>
+        Você possui acesso às agendas,
+        pacientes e evoluções das profissionais
+        da clínica.
+      </p>
+
+      <div style="margin-top:20px;">
+
+        ${professionals.map(p => `
+          <div class="appointment">
+
+            <strong>
+              👩‍⚕️ ${escapeHtml(p.name)}
+            </strong>
+
+            <button
+              data-professional="${p.id}"
+              class="ver-agenda-profissional"
+            >
+              Ver agenda
+            </button>
+
+          </div>
+        `).join('')}
 
       </div>
 
     </div>
   `
-}
 
-function configurarCadastroProfissional() {
-
-  const novo =
-    document.querySelector(
-      '#novo-profissional'
+  document
+    .querySelectorAll(
+      '.ver-agenda-profissional'
     )
+    .forEach(button => {
 
-  if (!novo) return
-
-  const form =
-    document.querySelector(
-      '#form-profissional'
-    )
-
-  novo.onclick = () => {
-
-    form.style.display =
-      'block'
-
-    novo.style.display =
-      'none'
-  }
-
-  document.querySelector(
-    '#cancelar-profissional'
-  ).onclick = () => {
-
-    form.style.display =
-      'none'
-
-    novo.style.display =
-      'inline-block'
-  }
-
-  document.querySelector(
-    '#salvar-profissional'
-  ).onclick =
-    async () => {
-
-      const nome =
-        document.querySelector(
-          '#novo-nome'
-        ).value.trim()
-
-      const email =
-        document.querySelector(
-          '#novo-email'
-        ).value.trim()
-
-      const senha =
-        document.querySelector(
-          '#nova-senha'
-        ).value
-
-      const papel =
-        document.querySelector(
-          '#novo-papel'
-        ).value
-
-      const resultado =
-        document.querySelector(
-          '#resultado-profissional'
-        )
-
-      if (!nome || !email || !senha) {
-
-        resultado.textContent =
-          '⚠️ Preencha nome, e-mail e senha.'
-
-        return
+      button.onclick = () => {
+        show('agenda')
       }
 
-      resultado.textContent =
-        '⏳ Criando usuário...'
-
-      const {
-        data,
-        error
-      } =
-        await supabase.functions.invoke(
-          'criar-usuario',
-          {
-            body: {
-              nome,
-              email,
-              password: senha,
-              papel
-            }
-          }
-        )
-
-      if (error) {
-
-        resultado.textContent =
-          '❌ ' + error.message
-
-        return
-      }
-
-      if (data?.error) {
-
-        resultado.textContent =
-          '❌ ' + data.error
-
-        return
-      }
-
-      resultado.textContent =
-        '✅ Usuário criado/vinculado com sucesso!'
-
-      document.querySelector(
-        '#novo-nome'
-      ).value = ''
-
-      document.querySelector(
-        '#novo-email'
-      ).value = ''
-
-      document.querySelector(
-        '#nova-senha'
-      ).value = ''
-    }
+    })
 }
 
-/* =========================
-   SUPERVISÃO
-========================= */
-
-function supervision() {
-
-  return `
-    <div class="box">
-
-      <h3>🔎 Supervisão</h3>
-
-      <p>
-        Aqui você poderá acompanhar as agendas,
-        pacientes e evoluções de toda a equipe.
-      </p>
-
-    </div>
-  `
-}
-
-/* =========================
+/* =========================================================
    RECUPERAÇÃO DE SENHA
-========================= */
+========================================================= */
 
 supabase.auth.onAuthStateChange(
-  event => {
+  async (event) => {
 
-    if (
-      event === 'PASSWORD_RECOVERY'
-    ) {
+    if (event === 'PASSWORD_RECOVERY') {
 
-      showUpdatePassword()
+      app.innerHTML = `
+        <main class="login">
+
+          <div class="box">
+
+            <h1>🔐 Nova senha</h1>
+
+            <input
+              id="nova-senha"
+              type="password"
+              placeholder="Nova senha"
+            >
+
+            <button id="salvar-senha">
+              Salvar nova senha
+            </button>
+
+            <div id="resultado-senha"></div>
+
+          </div>
+
+        </main>
+      `
+
+      document.querySelector(
+        '#salvar-senha'
+      ).onclick = async () => {
+
+        const password =
+          document.querySelector(
+            '#nova-senha'
+          ).value
+
+        const result =
+          document.querySelector(
+            '#resultado-senha'
+          )
+
+        if (password.length < 6) {
+          result.textContent =
+            'A senha precisa ter pelo menos 6 caracteres.'
+          return
+        }
+
+        const { error } =
+          await supabase.auth.updateUser({
+            password
+          })
+
+        if (error) {
+          result.textContent =
+            '❌ ' + error.message
+          return
+        }
+
+        result.textContent =
+          '✅ Senha alterada com sucesso!'
+
+        setTimeout(() => {
+          start()
+        }, 1000)
+      }
     }
   }
 )
 
-/* =========================
+/* =========================================================
    INICIAR
-========================= */
+========================================================= */
 
 start()
