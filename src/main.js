@@ -8,7 +8,7 @@ export const supabase = createClient(url, key)
 
 const app = document.querySelector('#app')
 
-function login(message = '') {
+function login() {
   app.innerHTML = `
     <main class="login">
       <div class="box">
@@ -20,64 +20,28 @@ function login(message = '') {
 
         <button id="entrar">Entrar</button>
 
-        <button id="esqueci" type="button">
-          Esqueci minha senha
-        </button>
-
-        <div id="msg">${message}</div>
+        <div id="msg"></div>
       </div>
     </main>
   `
 
   document.querySelector('#entrar').onclick = async () => {
-    const email = document.querySelector('#email').value.trim()
-    const password = document.querySelector('#password').value
+    const emailValue = document.querySelector('#email').value
+    const passwordValue = document.querySelector('#password').value
     const msg = document.querySelector('#msg')
-
-    if (!email || !password) {
-      msg.textContent = 'Digite seu e-mail e sua senha.'
-      return
-    }
 
     msg.textContent = 'Entrando...'
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-
-    if (error) {
-      msg.textContent = 'E-mail ou senha incorretos.'
-      console.error(error)
-      return
-    }
-
-    await start()
-  }
-
-  document.querySelector('#esqueci').onclick = async () => {
-    const email = document.querySelector('#email').value.trim()
-    const msg = document.querySelector('#msg')
-
-    if (!email) {
-      msg.textContent = 'Digite seu e-mail primeiro.'
-      return
-    }
-
-    msg.textContent = 'Enviando e-mail...'
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin
+      email: emailValue,
+      password: passwordValue
     })
 
     if (error) {
       msg.textContent = error.message
-      console.error(error)
-      return
+    } else {
+      start()
     }
-
-    msg.textContent =
-      'E-mail enviado! Verifique sua caixa de entrada para criar uma nova senha.'
   }
 }
 
@@ -91,49 +55,11 @@ async function start() {
     return
   }
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (!profile) {
-    app.innerHTML = `
-      <main class="login">
-        <div class="box">
-          <h1>💬 FonoGestão</h1>
-          <h2>Perfil não encontrado</h2>
-          <p>
-            O usuário foi autenticado, mas ainda não possui
-            um perfil cadastrado no sistema.
-          </p>
-
-          <button id="sair">Sair</button>
-        </div>
-      </main>
-    `
-
-    document.querySelector('#sair').onclick = async () => {
-      await supabase.auth.signOut()
-      login()
-    }
-
-    return
-  }
-
   app.innerHTML = `
     <div class="layout">
 
       <aside>
         <h2>💬 FonoGestão</h2>
-
-        <p>
-          Olá, ${profile.name}
-        </p>
 
         <button class="nav active" data-page="agenda">
           📅 Agenda
@@ -163,15 +89,7 @@ async function start() {
       <section class="main">
 
         <header>
-          <div>
-            <h1>FonoGestão</h1>
-            <span>
-              ${profile.role === 'supervisora'
-                ? 'Supervisora'
-                : 'Profissional'}
-            </span>
-          </div>
-
+          <h1>FonoGestão</h1>
           <span>Sistema online</span>
         </header>
 
@@ -188,15 +106,13 @@ async function start() {
   }
 
   document.querySelectorAll('.nav').forEach(button => {
-    button.onclick = () => {
-      showPage(button.dataset.page, profile)
-    }
+    button.onclick = () => show(button.dataset.page)
   })
 
-  showPage('agenda', profile)
+  show('agenda')
 }
 
-function showPage(page, profile) {
+function show(page) {
 
   document.querySelectorAll('.nav').forEach(button => {
     button.classList.toggle(
@@ -218,76 +134,312 @@ function showPage(page, profile) {
 
     evolutions: [
       '📝 Evoluções',
-      'Histórico de evoluções por paciente e data.'
+      'Todas as evoluções organizadas por paciente e data.'
     ],
 
     team: [
       '👩‍⚕️ Equipe',
-      'Profissionais da equipe.'
+      'Cadastre e gerencie as profissionais do FonoGestão.'
     ],
 
     supervision: [
       '🔎 Supervisão',
-      'Acompanhamento das profissionais.'
+      'Acompanhe e revise as evoluções das profissionais.'
     ]
   }
 
   const [title, description] = titles[page]
 
-  document.querySelector('#page').innerHTML = `
+  const content = document.querySelector('#page')
+
+  content.innerHTML = `
     <div class="content">
 
       <h2>${title}</h2>
 
       <p>${description}</p>
 
-      <div class="box">
+      ${
+        page === 'agenda'
+          ? calendar()
+          : page === 'patients'
+          ? patients()
+          : page === 'evolutions'
+          ? evolutions()
+          : page === 'team'
+          ? team()
+          : supervision()
+      }
 
-        ${
-          page === 'agenda'
-            ? `
-              <h3>Agenda</h3>
-              <p>
-                A agenda será carregada do banco de dados.
-              </p>
-            `
+    </div>
+  `
 
-            : page === 'patients'
-            ? `
-              <h3>Pacientes</h3>
-              <p>
-                Aqui ficarão os 45 pacientes,
-                organizados por profissional.
-              </p>
-            `
+  if (page === 'team') {
+    configurarCadastroProfissional()
+  }
+}
 
-            : page === 'evolutions'
-            ? `
-              <h3>Evoluções</h3>
-              <p>
-                Todas as evoluções ficarão reunidas
-                por paciente e por data.
-              </p>
-            `
+function calendar() {
 
-            : page === 'team'
-            ? `
-              <h3>Equipe</h3>
-              <p>
-                Aqui serão cadastradas as profissionais.
-              </p>
-            `
+  const days = [
+    'Dom 23/08',
+    'Seg 24/08',
+    'Ter 25/08',
+    'Qua 26/08',
+    'Qui 27/08',
+    'Sex 28/08',
+    'Sáb 29/08'
+  ]
 
-            : `
-              <h3>Supervisão</h3>
-              <p>
-                Aqui você poderá acompanhar as evoluções
-                das profissionais.
-              </p>
-            `
-        }
+  return `
+    <div class="toolbar">
+
+      <button>Hoje</button>
+
+      <button>‹</button>
+
+      <button>›</button>
+
+      <select>
+        <option>Todas as profissionais</option>
+      </select>
+
+    </div>
+
+    <div class="calendar">
+
+      <div class="days">
+
+        ${days.map(day => `
+          <b>${day}</b>
+        `).join('')}
 
       </div>
+
+      <div class="legend">
+
+        <span class="blue">●</span> Agendado
+
+        <span class="green">●</span> Atendido
+
+        <span class="yellow">●</span> Falta
+
+        <span class="red">●</span> Cancelado
+
+      </div>
+
+      <p class="empty">
+        A agenda será carregada do banco assim que os pacientes
+        e horários forem cadastrados.
+      </p>
+
+    </div>
+  `
+}
+
+function patients() {
+
+  return `
+    <div class="box">
+
+      <h3>Meus pacientes</h3>
+
+      <p>
+        Os pacientes serão vinculados automaticamente
+        à profissional responsável.
+      </p>
+
+      <button>
+        ➕ Cadastrar paciente
+      </button>
+
+    </div>
+  `
+}
+
+function evolutions() {
+
+  return `
+    <div class="box">
+
+      <h3>Histórico de evoluções</h3>
+
+      <p>
+        Cada paciente terá todas as evoluções reunidas
+        por data, com profissional e feedback da supervisora.
+      </p>
+
+    </div>
+  `
+}
+
+function team() {
+
+  return `
+    <div class="box">
+
+      <h3>👩‍⚕️ Profissionais</h3>
+
+      <p>
+        Cadastre quantas profissionais forem necessárias
+        para sua clínica.
+      </p>
+
+      <button id="novo-profissional">
+        ➕ Criar profissional
+      </button>
+
+      <div id="form-profissional" style="display:none; margin-top:20px;">
+
+        <h3>Nova profissional</h3>
+
+        <input
+          id="novo-nome"
+          type="text"
+          placeholder="Nome completo"
+        >
+
+        <input
+          id="novo-email"
+          type="email"
+          placeholder="E-mail"
+        >
+
+        <input
+          id="nova-senha"
+          type="password"
+          placeholder="Senha"
+        >
+
+        <select id="novo-papel">
+
+          <option value="profissional">
+            Fonoaudióloga
+          </option>
+
+          <option value="supervisora">
+            Supervisora
+          </option>
+
+          <option value="outro">
+            Outro profissional
+          </option>
+
+        </select>
+
+        <button id="salvar-profissional">
+          💾 Criar usuário
+        </button>
+
+        <button id="cancelar-profissional">
+          Cancelar
+        </button>
+
+        <div
+          id="resultado-profissional"
+          style="margin-top:15px;"
+        ></div>
+
+      </div>
+
+    </div>
+  `
+}
+
+function configurarCadastroProfissional() {
+
+  const novoBotao = document.querySelector('#novo-profissional')
+  const form = document.querySelector('#form-profissional')
+  const cancelar = document.querySelector('#cancelar-profissional')
+  const salvar = document.querySelector('#salvar-profissional')
+  const resultado = document.querySelector('#resultado-profissional')
+
+  if (!novoBotao) return
+
+  novoBotao.onclick = () => {
+    form.style.display = 'block'
+    novoBotao.style.display = 'none'
+  }
+
+  cancelar.onclick = () => {
+    form.style.display = 'none'
+    novoBotao.style.display = 'inline-block'
+    resultado.textContent = ''
+  }
+
+  salvar.onclick = async () => {
+
+    const nome = document.querySelector('#novo-nome').value.trim()
+    const email = document.querySelector('#novo-email').value.trim()
+    const senha = document.querySelector('#nova-senha').value
+    const papel = document.querySelector('#novo-papel').value
+
+    if (!nome || !email || !senha) {
+      resultado.textContent =
+        '⚠️ Preencha nome, e-mail e senha.'
+
+      return
+    }
+
+    if (senha.length < 6) {
+      resultado.textContent =
+        '⚠️ A senha precisa ter pelo menos 6 caracteres.'
+
+      return
+    }
+
+    resultado.textContent = '⏳ Criando usuário...'
+    salvar.disabled = true
+
+    const { data, error } =
+      await supabase.functions.invoke('criar-usuario', {
+        body: {
+          nome,
+          email,
+          password: senha,
+          papel
+        }
+      })
+
+    salvar.disabled = false
+
+    if (error) {
+
+      resultado.textContent =
+        '❌ Erro: ' + error.message
+
+      return
+    }
+
+    if (data?.error) {
+
+      resultado.textContent =
+        '❌ Erro: ' + data.error
+
+      return
+    }
+
+    resultado.textContent =
+      '✅ Profissional criada com sucesso!'
+
+    document.querySelector('#novo-nome').value = ''
+    document.querySelector('#novo-email').value = ''
+    document.querySelector('#nova-senha').value = ''
+
+  }
+}
+
+function supervision() {
+
+  return `
+    <div class="box">
+
+      <h3>Área da supervisora</h3>
+
+      <p>
+        Visualize agendas, pacientes, evoluções pendentes
+        e feedbacks de todas as profissionais.
+      </p>
 
     </div>
   `
