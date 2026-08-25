@@ -194,22 +194,96 @@ async function loadProfile() {
   } = await supabase.auth.getUser()
 
   if (userError || !user) {
+    console.error('Usuário não encontrado:', userError)
     return null
   }
 
-  const { data, error } =
+  console.log('ID do usuário autenticado:', user.id)
+  console.log('E-mail:', user.email)
+  console.log('Metadados:', user.user_metadata)
+
+  const { data: perfilPorId, error: erroPorId } =
     await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
+      .eq('active', true)
       .maybeSingle()
 
-  if (error) {
-    console.error(error)
+  if (erroPorId) {
+    console.error('Erro ao buscar perfil pelo ID:', erroPorId)
     return null
   }
 
-  return data
+  if (perfilPorId) {
+    console.log('Perfil encontrado pelo ID:', perfilPorId)
+    return perfilPorId
+  }
+
+  const nome =
+    user.user_metadata?.name ||
+    user.user_metadata?.full_name ||
+    user.user_metadata?.nome
+
+  if (nome) {
+    console.log('Tentando encontrar perfil pelo nome:', nome)
+
+    const { data: perfilPorNome, error: erroPorNome } =
+      await supabase
+        .from('profiles')
+        .select('*')
+        .eq('name', nome)
+        .eq('active', true)
+        .maybeSingle()
+
+    if (erroPorNome) {
+      console.error('Erro ao buscar perfil pelo nome:', erroPorNome)
+    }
+
+    if (perfilPorNome) {
+      console.log('Perfil encontrado pelo nome:', perfilPorNome)
+      return perfilPorNome
+    }
+  }
+
+  const { data: perfis, error: erroPerfis } =
+    await supabase
+      .from('profiles')
+      .select('*')
+      .eq('active', true)
+
+  if (erroPerfis) {
+    console.error('Erro ao buscar perfis ativos:', erroPerfis)
+    return null
+  }
+
+  console.log('Perfis ativos encontrados:', perfis)
+
+  if (nome && perfis?.length) {
+    const nomeNormalizado = nome.trim().toLowerCase()
+
+    const perfilCorrespondente = perfis.find(
+      perfil =>
+        perfil.name?.trim().toLowerCase() === nomeNormalizado
+    )
+
+    if (perfilCorrespondente) {
+      console.log(
+        'Perfil encontrado por correspondência de nome:',
+        perfilCorrespondente
+      )
+      return perfilCorrespondente
+    }
+  }
+
+  console.error('PERFIL NÃO ENCONTRADO.', {
+    userId: user.id,
+    email: user.email,
+    nome,
+    perfis
+  })
+
+  return null
 }
 
 /* =========================================================
@@ -623,46 +697,45 @@ async function renderAgenda() {
                               )
                             }
                           </div>
+                            ${
+                              patient?.cpf
+                                ? `
+                                  <small>
+                                    CPF:
+                                    ${escapeHtml(patient.cpf)}
+                                  </small>
+                                `
+                                : ''
+                            }
 
-                          ${
-                            patient?.cpf
-                              ? `
-                                <small>
-                                  CPF:
-                                  ${escapeHtml(patient.cpf)}
-                                </small>
-                              `
-                              : ''
-                          }
+                            ${
+                              isManager()
+                                ? `
+                                  <small>
+                                    👩‍⚕️
+                                    ${escapeHtml(
+                                      professionalMap[
+                                        a.professional_id
+                                      ] || ''
+                                    )}
+                                  </small>
+                                `
+                                : ''
+                            }
 
-                          ${
-                            isManager()
-                              ? `
-                                <small>
-                                  👩‍⚕️
-                                  ${escapeHtml(
-                                    professionalMap[
-                                      a.professional_id
-                                    ] || ''
-                                  )}
-                                </small>
-                              `
-                              : ''
-                          }
+                            <small>
+                              ${a.status}
+                            </small>
 
-                          <small>
-                            ${a.status}
-                          </small>
-
-                        </div>
-                      `
-                    }).join('')
-                  : `
-                    <div class="empty">
-                      Nenhum atendimento
-                    </div>
-                  `
-              }
+                          </div>
+                        `
+                      }).join('')
+                    : `
+                      <div class="empty">
+                        Nenhum atendimento
+                      </div>
+                    `
+                }
 
             </div>
           `
@@ -684,6 +757,7 @@ async function renderAgenda() {
       currentWeek.setDate(
         currentWeek.getDate() - 7
       )
+
       renderAgenda()
     }
 
@@ -692,6 +766,7 @@ async function renderAgenda() {
       currentWeek.setDate(
         currentWeek.getDate() + 7
       )
+
       renderAgenda()
     }
 
@@ -702,19 +777,16 @@ async function renderAgenda() {
 
   if (filtro) {
     filtro.onchange = () => {
-      const value = filtro.value
-
-      document
-        .querySelectorAll('.appointment')
-        .forEach(() => {})
-
-      renderAgendaFiltrada(value)
+      renderAgendaFiltrada(
+        filtro.value
+      )
     }
   }
 
   document.querySelector(
     '#novo-agendamento'
   ).onclick = () => {
+
     mostrarFormularioAgendamento(
       professionals
     )
@@ -728,177 +800,223 @@ async function renderAgenda() {
 async function renderAgendaFiltrada(
   professionalId
 ) {
-  const container =
-    document.querySelector('#page-content')
 
-  const professionals =
-    await getProfessionals()
-
-  const weekDates = getWeekDates()
+  const weekDates =
+    getWeekDates()
 
   const firstDate =
-    dateInputValue(weekDates[0])
+    dateInputValue(
+      weekDates[0]
+    )
 
   const lastDate =
-    dateInputValue(weekDates[6])
+    dateInputValue(
+      weekDates[6]
+    )
 
   let query =
     supabase
       .from('appointments')
       .select('*')
-      .gte('appointment_date', firstDate)
-      .lte('appointment_date', lastDate)
-      .order('appointment_date')
-      .order('start_time')
+      .gte(
+        'appointment_date',
+        firstDate
+      )
+      .lte(
+        'appointment_date',
+        lastDate
+      )
+      .order(
+        'appointment_date'
+      )
+      .order(
+        'start_time'
+      )
 
   if (professionalId) {
-    query = query.eq(
-      'professional_id',
-      professionalId
-    )
+    query =
+      query.eq(
+        'professional_id',
+        professionalId
+      )
   }
 
-  const { data: appointments } =
-    await query
+  const {
+    data: appointments,
+    error
+  } = await query
+
+  if (error) {
+    console.error(error)
+    return
+  }
 
   const patientIds =
-    [...new Set(
-      (appointments || [])
-        .map(a => a.patient_id)
-        .filter(Boolean)
-    )]
+    [
+      ...new Set(
+        (appointments || [])
+          .map(
+            a => a.patient_id
+          )
+          .filter(Boolean)
+      )
+    ]
 
   let patientsMap = {}
 
   if (patientIds.length) {
-    const { data: patients } =
-      await supabase
-        .from('patients')
-        .select('id,name,cpf')
-        .in('id', patientIds)
 
-    ;(patients || []).forEach(p => {
-      patientsMap[p.id] = p
-    })
+    const {
+      data: patients
+    } = await supabase
+      .from('patients')
+      .select(
+        'id,name,cpf'
+      )
+      .in(
+        'id',
+        patientIds
+      )
+
+    ;(patients || []).forEach(
+      patient => {
+        patientsMap[patient.id] =
+          patient
+      }
+    )
   }
+
+  const professionals =
+    await getProfessionals()
 
   const professionalMap = {}
 
-  professionals.forEach(p => {
-    professionalMap[p.id] = p.name
-  })
+  professionals.forEach(
+    professional => {
 
-  const appointmentElements =
-    document.querySelectorAll('.calendar-day')
+      professionalMap[
+        professional.id
+      ] = professional.name
 
-  appointmentElements.forEach(dayElement => {
-    const dateText =
-      dayElement.dataset?.date
-  })
-
-  await renderAgendaComFiltro(
-    professionalId,
-    appointments,
-    patientsMap,
-    professionalMap
+    }
   )
-}
-
-async function renderAgendaComFiltro(
-  professionalId,
-  appointments,
-  patientsMap,
-  professionalMap
-) {
-  const weekDates = getWeekDates()
 
   const days =
-    document.querySelectorAll('.calendar-day')
+    document.querySelectorAll(
+      '.calendar-day'
+    )
 
-  days.forEach((dayElement, index) => {
+  days.forEach(
+    (dayElement, index) => {
 
-    const dateValue =
-      dateInputValue(weekDates[index])
+      const dateValue =
+        dateInputValue(
+          weekDates[index]
+        )
 
-    const list =
-      appointments.filter(
-        a => a.appointment_date === dateValue
-      )
+      const list =
+        (appointments || []).filter(
+          appointment =>
+            appointment.appointment_date ===
+            dateValue
+        )
 
-    dayElement.innerHTML = `
-      <h3>
-        ${weekDates[index].toLocaleDateString(
-          'pt-BR',
-          {
-            weekday: 'short',
-            day: '2-digit',
-            month: '2-digit'
-          }
-        )}
-      </h3>
+      dayElement.innerHTML = `
+        <h3>
+          ${weekDates[index].toLocaleDateString(
+            'pt-BR',
+            {
+              weekday: 'short',
+              day: '2-digit',
+              month: '2-digit'
+            }
+          )}
+        </h3>
 
-      ${
-        list.length
-          ? list.map(a => `
-              <div class="appointment">
+        ${
+          list.length
+            ? list.map(
+                appointment => {
 
-                <strong>
-                  ${a.start_time?.slice(0,5)}
-                  ${
-                    a.end_time
-                      ? ` - ${a.end_time.slice(0,5)}`
-                      : ''
-                  }
-                </strong>
+                  const patient =
+                    patientsMap[
+                      appointment.patient_id
+                    ]
 
-                <div>
-                  ${escapeHtml(
-                    patientsMap[a.patient_id]?.name ||
-                    'Paciente'
-                  )}
-                </div>
+                  return `
+                    <div class="appointment">
 
-                ${
-                  patientsMap[a.patient_id]?.cpf
-                    ? `
+                      <strong>
+                        ${
+                          appointment.start_time
+                            ?.slice(0, 5)
+                        }
+
+                        ${
+                          appointment.end_time
+                            ? `
+                              -
+                              ${appointment.end_time.slice(0, 5)}
+                            `
+                            : ''
+                        }
+                      </strong>
+
+                      <div>
+                        ${
+                          escapeHtml(
+                            patient?.name ||
+                            'Paciente'
+                          )
+                        }
+                      </div>
+
+                      ${
+                        patient?.cpf
+                          ? `
+                            <small>
+                              CPF:
+                              ${escapeHtml(
+                                patient.cpf
+                              )}
+                            </small>
+                          `
+                          : ''
+                      }
+
+                      ${
+                        isManager()
+                          ? `
+                            <small>
+                              👩‍⚕️
+                              ${escapeHtml(
+                                professionalMap[
+                                  appointment
+                                    .professional_id
+                                ] || ''
+                              )}
+                            </small>
+                          `
+                          : ''
+                      }
+
                       <small>
-                        CPF:
-                        ${escapeHtml(
-                          patientsMap[
-                            a.patient_id
-                          ].cpf
-                        )}
+                        ${appointment.status}
                       </small>
-                    `
-                    : ''
-                }
 
-                ${
-                  isManager()
-                    ? `
-                      <small>
-                        👩‍⚕️
-                        ${escapeHtml(
-                          professionalMap[
-                            a.professional_id
-                          ] || ''
-                        )}
-                      </small>
-                    `
-                    : ''
+                    </div>
+                  `
                 }
-
+              ).join('')
+            : `
+              <div class="empty">
+                Nenhum atendimento
               </div>
             `
-          ).join('')
-          : `
-            <div class="empty">
-              Nenhum atendimento
-            </div>
-          `
-      }
-    `
-  })
+        }
+      `
+    }
+  )
 }
 
 /* =========================================================
@@ -908,6 +1026,7 @@ async function renderAgendaComFiltro(
 async function mostrarFormularioAgendamento(
   professionals
 ) {
+
   const form =
     document.querySelector(
       '#form-agendamento'
@@ -916,39 +1035,64 @@ async function mostrarFormularioAgendamento(
   const patients =
     await getPatients()
 
-  form.style.display = 'block'
+  form.style.display =
+    'block'
 
   form.innerHTML = `
     <div class="box">
 
-      <h3>📅 Novo agendamento</h3>
+      <h3>
+        📅 Novo agendamento
+      </h3>
 
-      <label>Paciente</label>
+      <label>
+        Paciente
+      </label>
 
       <select id="ag-paciente">
+
         <option value="">
           Selecione o paciente
         </option>
 
-        ${patients.map(p => `
-          <option value="${p.id}">
-            ${escapeHtml(p.name)}
-          </option>
-        `).join('')}
+        ${
+          patients.map(
+            patient => `
+              <option
+                value="${patient.id}"
+              >
+                ${escapeHtml(
+                  patient.name
+                )}
+              </option>
+            `
+          ).join('')
+        }
+
       </select>
 
       ${
         isManager()
           ? `
-            <label>Profissional</label>
+            <label>
+              Profissional
+            </label>
 
             <select id="ag-profissional">
 
-              ${professionals.map(p => `
-                <option value="${p.id}">
-                  ${escapeHtml(p.name)}
-                </option>
-              `).join('')}
+              ${
+                professionals.map(
+                  professional => `
+                    <option
+                      value="${professional.id}"
+                    >
+                      ${escapeHtml(
+                        professional.name
+                      )}
+                    </option>
+                  `
+                ).join('')
+              }
 
             </select>
           `
@@ -961,33 +1105,45 @@ async function mostrarFormularioAgendamento(
           `
       }
 
-      <label>Data</label>
+      <label>
+        Data
+      </label>
 
       <input
         id="ag-data"
         type="date"
-        value="${dateInputValue(new Date())}"
+        value="${dateInputValue(
+          new Date()
+        )}"
       >
 
-      <label>Horário de início</label>
+      <label>
+        Horário de início
+      </label>
 
       <input
         id="ag-inicio"
         type="time"
       >
 
-      <label>Horário de término</label>
+      <label>
+        Horário de término
+      </label>
 
       <input
         id="ag-fim"
         type="time"
       >
 
-      <button id="salvar-agendamento">
+      <button
+        id="salvar-agendamento"
+      >
         💾 Salvar agendamento
       </button>
 
-      <button id="fechar-agendamento">
+      <button
+        id="fechar-agendamento"
+      >
         Cancelar
       </button>
 
@@ -1002,7 +1158,9 @@ async function mostrarFormularioAgendamento(
   document.querySelector(
     '#fechar-agendamento'
   ).onclick = () => {
-    form.style.display = 'none'
+
+    form.style.display =
+      'none'
   }
 
   document.querySelector(
@@ -1045,30 +1203,61 @@ async function mostrarFormularioAgendamento(
       !date ||
       !startTime
     ) {
+
       result.textContent =
         '⚠️ Preencha paciente, profissional, data e horário.'
+
+      return
+    }
+
+    if (
+      endTime &&
+      startTime >= endTime
+    ) {
+
+      result.textContent =
+        '⚠️ O horário final deve ser depois do inicial.'
+
       return
     }
 
     result.textContent =
       '⏳ Salvando...'
 
-    const { error } =
-      await supabase
-        .from('appointments')
-        .insert({
-          patient_id: patientId,
-          professional_id: professionalId,
-          appointment_date: date,
-          start_time: startTime,
-          end_time: endTime || null,
-          status: 'agendado',
-          clinic_id: currentProfile.clinic_id
-        })
+    const {
+      error
+    } = await supabase
+      .from('appointments')
+      .insert({
+
+        patient_id:
+          patientId,
+
+        professional_id:
+          professionalId,
+
+        appointment_date:
+          date,
+
+        start_time:
+          startTime,
+
+        end_time:
+          endTime || null,
+
+        status:
+          'agendado',
+
+        clinic_id:
+          currentProfile.clinic_id
+
+      })
 
     if (error) {
+
       result.textContent =
         '❌ ' + error.message
+
       return
     }
 
@@ -1076,8 +1265,12 @@ async function mostrarFormularioAgendamento(
       '✅ Agendamento salvo!'
 
     setTimeout(() => {
-      form.style.display = 'none'
+
+      form.style.display =
+        'none'
+
       renderAgenda()
+
     }, 700)
   }
 }
@@ -1087,6 +1280,7 @@ async function mostrarFormularioAgendamento(
 ========================================================= */
 
 async function getPatients() {
+
   let query =
     supabase
       .from('patients')
@@ -1094,17 +1288,33 @@ async function getPatients() {
       .order('name')
 
   if (isProfessional()) {
-    query = query.eq(
-      'professional_id',
-      currentProfile.id
-    )
+
+    query =
+      query.eq(
+        'professional_id',
+        currentProfile.id
+      )
+  } else {
+
+    query =
+      query.eq(
+        'clinic_id',
+        currentProfile.clinic_id
+      )
   }
 
-  const { data, error } =
-    await query
+  const {
+    data,
+    error
+  } = await query
 
   if (error) {
-    console.error(error)
+
+    console.error(
+      'Erro ao carregar pacientes:',
+      error
+    )
+
     return []
   }
 
@@ -1112,8 +1322,11 @@ async function getPatients() {
 }
 
 async function renderPatients() {
+
   const container =
-    document.querySelector('#page-content')
+    document.querySelector(
+      '#page-content'
+    )
 
   const patients =
     await getPatients()
@@ -1123,9 +1336,13 @@ async function renderPatients() {
 
   const professionalMap = {}
 
-  professionals.forEach(p => {
-    professionalMap[p.id] = p.name
-  })
+  professionals.forEach(
+    professional => {
+      professionalMap[
+        professional.id
+      ] = professional.name
+    }
+  )
 
   container.innerHTML = `
     <div class="box">
@@ -1138,9 +1355,13 @@ async function renderPatients() {
         "
       >
 
-        <h3>👥 Meus pacientes</h3>
+        <h3>
+          👥 Pacientes
+        </h3>
 
-        <button id="novo-paciente">
+        <button
+          id="novo-paciente"
+        >
           ➕ Cadastrar paciente
         </button>
 
@@ -1148,60 +1369,107 @@ async function renderPatients() {
 
       <div
         id="form-paciente"
-        style="display:none; margin-top:20px;"
+        style="
+          display:none;
+          margin-top:20px;
+        "
       ></div>
 
       ${
         patients.length
           ? `
-            <div style="margin-top:20px;">
+            <div
+              style="
+                margin-top:20px;
+              "
+            >
 
-              ${patients.map(p => `
-                <div class="appointment">
+              ${
+                patients.map(
+                  patient => `
+                    <div
+                      class="appointment"
+                    >
 
-                  <strong>
-                    ${escapeHtml(p.name)}
-                  </strong>
+                      <strong>
+                        ${escapeHtml(
+                          patient.name
+                        )}
+                      </strong>
 
-                  ${
-                    p.cpf
-                      ? `
-                        <div>
-                          CPF:
-                          ${escapeHtml(p.cpf)}
-                        </div>
-                      `
-                      : ''
-                  }
+                      ${
+                        patient.cpf
+                          ? `
+                            <div>
+                              🪪 CPF:
+                              ${escapeHtml(
+                                patient.cpf
+                              )}
+                            </div>
+                          `
+                          : ''
+                      }
 
-                  ${
-                    p.birth_date
-                      ? `
-                        <div>
-                          Nascimento:
-                          ${formatDate(p.birth_date)}
-                        </div>
-                      `
-                      : ''
-                  }
+                      ${
+                        patient.birth_date
+                          ? `
+                            <div>
+                              🎂 Nascimento:
+                              ${formatDate(
+                                patient.birth_date
+                              )}
+                            </div>
+                          `
+                          : ''
+                      }
 
-                  ${
-                    isManager()
-                      ? `
-                        <small>
-                          👩‍⚕️
-                          ${escapeHtml(
-                            professionalMap[
-                              p.professional_id
-                            ] || 'Sem profissional'
-                          )}
-                        </small>
-                      `
-                      : ''
-                  }
+                      ${
+                        patient.guardian
+                          ? `
+                            <div>
+                              👨‍👩‍👧 Responsável:
+                              ${escapeHtml(
+                                patient.guardian
+                              )}
+                            </div>
+                          `
+                          : ''
+                      }
 
-                </div>
-              `).join('')}
+                      ${
+                        patient.phone
+                          ? `
+                            <div>
+                              📱 Telefone:
+                              ${escapeHtml(
+                                patient.phone
+                              )}
+                            </div>
+                          `
+                          : ''
+                      }
+
+                      ${
+                        isManager()
+                          ? `
+                            <small>
+                              👩‍⚕️
+                              ${escapeHtml(
+                                professionalMap[
+                                  patient
+                                    .professional_id
+                                ] ||
+                                'Sem profissional'
+                              )}
+                            </small>
+                          `
+                          : ''
+                      }
+
+                    </div>
+                  `
+                ).join('')
+              }
 
             </div>
           `
@@ -1217,10 +1485,12 @@ async function renderPatients() {
 
   document.querySelector(
     '#novo-paciente'
-  ).onclick = () =>
+  ).onclick = () => {
+
     mostrarFormularioPaciente(
       professionals
     )
+  }
 }
 
 /* =========================================================
@@ -1230,17 +1500,21 @@ async function renderPatients() {
 function mostrarFormularioPaciente(
   professionals
 ) {
+
   const form =
     document.querySelector(
       '#form-paciente'
     )
 
-  form.style.display = 'block'
+  form.style.display =
+    'block'
 
   form.innerHTML = `
     <div class="box">
 
-      <h3>👤 Novo paciente</h3>
+      <h3>
+        👤 Novo paciente
+      </h3>
 
       <input
         id="paciente-nome"
@@ -1252,9 +1526,12 @@ function mostrarFormularioPaciente(
         id="paciente-cpf"
         type="text"
         placeholder="CPF"
+        maxlength="14"
       >
 
-      <label>Data de nascimento</label>
+      <label>
+        Data de nascimento
+      </label>
 
       <input
         id="paciente-nascimento"
@@ -1276,19 +1553,31 @@ function mostrarFormularioPaciente(
       ${
         isManager()
           ? `
-            <label>Profissional responsável</label>
+            <label>
+              Profissional responsável
+            </label>
 
-            <select id="paciente-profissional">
+            <select
+              id="paciente-profissional"
+            >
 
               <option value="">
                 Selecione
               </option>
 
-              ${professionals.map(p => `
-                <option value="${p.id}">
-                  ${escapeHtml(p.name)}
-                </option>
-              `).join('')}
+              ${
+                professionals.map(
+                  professional => `
+                    <option
+                      value="${professional.id}"
+                    >
+                      ${escapeHtml(
+                        professional.name
+                      )}
+                    </option>
+                  `
+                ).join('')
+              }
 
             </select>
           `
@@ -1306,11 +1595,15 @@ function mostrarFormularioPaciente(
         placeholder="Observações"
       ></textarea>
 
-      <button id="salvar-paciente">
+      <button
+        id="salvar-paciente"
+      >
         💾 Salvar paciente
       </button>
 
-      <button id="cancelar-paciente">
+      <button
+        id="cancelar-paciente"
+      >
         Cancelar
       </button>
 
@@ -1325,7 +1618,9 @@ function mostrarFormularioPaciente(
   document.querySelector(
     '#cancelar-paciente'
   ).onclick = () => {
-    form.style.display = 'none'
+
+    form.style.display =
+      'none'
   }
 
   document.querySelector(
@@ -1345,7 +1640,8 @@ function mostrarFormularioPaciente(
     const birthDate =
       document.querySelector(
         '#paciente-nascimento'
-      ).value || null
+      ).value ||
+      null
 
     const guardian =
       document.querySelector(
@@ -1373,51 +1669,71 @@ function mostrarFormularioPaciente(
       )
 
     if (!name) {
+
       result.textContent =
         '⚠️ Informe o nome do paciente.'
+
       return
     }
 
     if (!professionalId) {
+
       result.textContent =
         '⚠️ Selecione a profissional responsável.'
+
       return
     }
 
     result.textContent =
       '⏳ Salvando paciente...'
 
-    const { data, error } =
-      await supabase
-        .from('patients')
-        .insert({
-          name,
-          cpf: cpf || null,
-          birth_date: birthDate,
-          guardian: guardian || null,
-          phone: phone || null,
-          notes: notes || null,
-          professional_id: professionalId,
-          clinic_id: currentProfile.clinic_id
-        })
-        .select()
-        .single()
+    const {
+      data,
+      error
+    } = await supabase
+      .from('patients')
+      .insert({
+
+        name,
+
+        cpf:
+          cpf || null,
+
+        birth_date:
+          birthDate,
+
+        guardian:
+          guardian || null,
+
+        phone:
+          phone || null,
+
+        notes:
+          notes || null,
+
+        professional_id:
+          professionalId,
+
+        clinic_id:
+          currentProfile.clinic_id
+
+      })
+      .select()
+      .single()
 
     if (error) {
+
       result.textContent =
         '❌ ' + error.message
+
       return
     }
 
     result.textContent =
       '✅ Paciente cadastrado com sucesso!'
 
-    /*
-      Depois de cadastrar, perguntamos se deseja
-      colocar o primeiro horário na agenda.
-    */
-
     setTimeout(() => {
+
       form.innerHTML = `
         <div class="box">
 
@@ -1427,14 +1743,19 @@ function mostrarFormularioPaciente(
 
           <p>
             Deseja cadastrar um horário
-            para ${escapeHtml(data.name)}?
+            para
+            ${escapeHtml(data.name)}?
           </p>
 
-          <button id="sim-agendar">
+          <button
+            id="sim-agendar"
+          >
             📅 Sim, agendar
           </button>
 
-          <button id="nao-agendar">
+          <button
+            id="nao-agendar"
+          >
             Agora não
           </button>
 
@@ -1444,12 +1765,6 @@ function mostrarFormularioPaciente(
       document.querySelector(
         '#sim-agendar'
       ).onclick = async () => {
-
-        form.innerHTML = `
-          <div class="box">
-            Carregando...
-          </div>
-        `
 
         const professionalList =
           await getProfessionals()
@@ -1461,37 +1776,63 @@ function mostrarFormularioPaciente(
           <div class="box">
 
             <h3>
-              📅 Agendar ${escapeHtml(data.name)}
+              📅 Agendar
+              ${escapeHtml(
+                data.name
+              )}
             </h3>
 
-            <select id="ag-paciente">
+            <select
+              id="ag-paciente"
+            >
 
-              ${patients.map(p => `
-                <option
-                  value="${p.id}"
-                  ${p.id === data.id ? 'selected' : ''}
-                >
-                  ${escapeHtml(p.name)}
-                </option>
-              `).join('')}
+              ${
+                patients.map(
+                  patient => `
+                    <option
+                      value="${patient.id}"
+                      ${
+                        patient.id === data.id
+                          ? 'selected'
+                          : ''
+                      }
+                    >
+                      ${escapeHtml(
+                        patient.name
+                      )}
+                    </option>
+                  `
+                ).join('')
+              }
 
             </select>
 
             ${
               isManager()
                 ? `
-                  <select id="ag-profissional">
+                  <select
+                    id="ag-profissional"
+                  >
 
-                    ${professionalList.map(p => `
-                      <option
-                        value="${p.id}"
-                        ${p.id === data.professional_id
-                          ? 'selected'
-                          : ''}
-                      >
-                        ${escapeHtml(p.name)}
-                      </option>
-                    `).join('')}
+                    ${
+                      professionalList.map(
+                        professional => `
+                          <option
+                            value="${professional.id}"
+                            ${
+                              professional.id ===
+                              data.professional_id
+                                ? 'selected'
+                                : ''
+                            }
+                          >
+                            ${escapeHtml(
+                              professional.name
+                            )}
+                          </option>
+                        `
+                      ).join('')
+                    }
 
                   </select>
                 `
@@ -1504,23 +1845,39 @@ function mostrarFormularioPaciente(
                 `
             }
 
+            <label>
+              Data
+            </label>
+
             <input
               id="ag-data"
               type="date"
-              value="${dateInputValue(new Date())}"
+              value="${dateInputValue(
+                new Date()
+              )}"
             >
+
+            <label>
+              Horário de início
+            </label>
 
             <input
               id="ag-inicio"
               type="time"
             >
 
+            <label>
+              Horário de término
+            </label>
+
             <input
               id="ag-fim"
               type="time"
             >
 
-            <button id="salvar-agendamento">
+            <button
+              id="salvar-agendamento"
+            >
               💾 Salvar horário
             </button>
 
@@ -1570,28 +1927,58 @@ function mostrarFormularioPaciente(
             !date ||
             !startTime
           ) {
+
             result.textContent =
               '⚠️ Informe data e horário.'
+
             return
           }
 
-          const { error } =
-            await supabase
-              .from('appointments')
-              .insert({
-                patient_id: patientId,
-                professional_id: professionalId,
-                appointment_date: date,
-                start_time: startTime,
-                end_time: endTime || null,
-                status: 'agendado',
-                clinic_id:
-                  currentProfile.clinic_id
-              })
+          if (
+            endTime &&
+            startTime >= endTime
+          ) {
+
+            result.textContent =
+              '⚠️ O horário final deve ser depois do inicial.'
+
+            return
+          }
+
+          const {
+            error
+          } = await supabase
+            .from('appointments')
+            .insert({
+
+              patient_id:
+                patientId,
+
+              professional_id:
+                professionalId,
+
+              appointment_date:
+                date,
+
+              start_time:
+                startTime,
+
+              end_time:
+                endTime || null,
+
+              status:
+                'agendado',
+
+              clinic_id:
+                currentProfile.clinic_id
+
+            })
 
           if (error) {
+
             result.textContent =
               '❌ ' + error.message
+
             return
           }
 
@@ -1613,38 +2000,57 @@ function mostrarFormularioPaciente(
     }, 700)
   }
 }
-
 /* =========================================================
    PROFISSIONAIS
 ========================================================= */
 
 async function getProfessionals() {
-  const { data, error } =
-    await supabase
-      .from('profiles')
-      .select('id,name,role,clinic_id,active')
-      .eq(
-        'clinic_id',
-        currentProfile.clinic_id
-      )
-      .eq('active', true)
-      .in(
-        'role',
-        ['profissional', 'estagiaria']
-      )
-      .order('name')
+  const {
+    data,
+    error
+  } = await supabase
+    .from('profiles')
+    .select(
+      'id,name,role,clinic_id,active'
+    )
+    .eq(
+      'clinic_id',
+      currentProfile.clinic_id
+    )
+    .eq(
+      'active',
+      true
+    )
+    .in(
+      'role',
+      [
+        'profissional',
+        'estagiaria'
+      ]
+    )
+    .order('name')
 
   if (error) {
-    console.error(error)
+    console.error(
+      'Erro ao carregar profissionais:',
+      error
+    )
+
     return []
   }
 
   return data || []
 }
 
+/* =========================================================
+   EQUIPE
+========================================================= */
+
 async function renderTeam() {
   const container =
-    document.querySelector('#page-content')
+    document.querySelector(
+      '#page-content'
+    )
 
   if (!isManager()) {
     container.innerHTML = `
@@ -1652,6 +2058,7 @@ async function renderTeam() {
         Acesso não autorizado.
       </div>
     `
+
     return
   }
 
@@ -1661,32 +2068,54 @@ async function renderTeam() {
   container.innerHTML = `
     <div class="box">
 
-      <h3>👩‍⚕️ Equipe</h3>
+      <h3>
+        👩‍⚕️ Equipe
+      </h3>
 
       <p>
-        Profissionais da clínica.
+        Profissionais cadastrados
+        na clínica.
       </p>
 
       ${
-        professionals.map(p => `
-          <div class="appointment">
+        professionals.length
+          ? professionals.map(
+              professional => `
+                <div
+                  class="appointment"
+                >
 
-            <strong>
-              ${escapeHtml(p.name)}
-            </strong>
+                  <strong>
+                    👩‍⚕️
+                    ${escapeHtml(
+                      professional.name
+                    )}
+                  </strong>
 
-            <div>
-              ${roleLabel(p.role)}
-            </div>
+                  <div>
+                    ${roleLabel(
+                      professional.role
+                    )}
+                  </div>
 
-          </div>
-        `).join('')
+                </div>
+              `
+            ).join('')
+          : `
+            <p>
+              Nenhuma profissional
+              cadastrada.
+            </p>
+          `
       }
 
-      <p style="margin-top:20px;">
-        Para cadastrar uma nova profissional,
-        utilize o cadastro administrativo já
-        configurado no sistema.
+      <p
+        style="margin-top:20px;"
+      >
+        Para cadastrar uma nova
+        profissional, utilize o
+        cadastro administrativo
+        já configurado.
       </p>
 
     </div>
@@ -1699,96 +2128,189 @@ async function renderTeam() {
 
 async function renderEvolutions() {
   const container =
-    document.querySelector('#page-content')
+    document.querySelector(
+      '#page-content'
+    )
 
   let query =
     supabase
       .from('evolutions')
       .select('*')
-      .order('evolution_date', {
-        ascending: false
-      })
-      .order('evolution_time', {
-        ascending: false
-      })
+      .order(
+        'evolution_date',
+        {
+          ascending: false
+        }
+      )
+      .order(
+        'evolution_time',
+        {
+          ascending: false
+        }
+      )
 
   if (isProfessional()) {
-    query = query.eq(
-      'professional_id',
-      currentProfile.id
-    )
+    query =
+      query.eq(
+        'professional_id',
+        currentProfile.id
+      )
+  } else {
+    query =
+      query.eq(
+        'clinic_id',
+        currentProfile.clinic_id
+      )
   }
 
-  const { data, error } =
-    await query
+  const {
+    data,
+    error
+  } = await query
 
   if (error) {
-    container.innerHTML =
-      `<div class="box">❌ ${escapeHtml(error.message)}</div>`
+    container.innerHTML = `
+      <div class="box">
+        ❌
+        ${escapeHtml(
+          error.message
+        )}
+      </div>
+    `
+
     return
   }
 
   const patientIds =
-    [...new Set(
-      (data || [])
-        .map(e => e.patient_id)
-        .filter(Boolean)
-    )]
+    [
+      ...new Set(
+        (data || [])
+          .map(
+            evolution =>
+              evolution.patient_id
+          )
+          .filter(Boolean)
+      )
+    ]
 
   let patientsMap = {}
 
   if (patientIds.length) {
-    const { data: patients } =
-      await supabase
-        .from('patients')
-        .select('id,name')
-        .in('id', patientIds)
+    const {
+      data: patients
+    } = await supabase
+      .from('patients')
+      .select(
+        'id,name'
+      )
+      .in(
+        'id',
+        patientIds
+      )
 
-    ;(patients || []).forEach(p => {
-      patientsMap[p.id] = p.name
-    })
+    ;(patients || []).forEach(
+      patient => {
+
+        patientsMap[
+          patient.id
+        ] = patient.name
+
+      }
+    )
   }
 
   container.innerHTML = `
     <div class="box">
 
-      <h3>📝 Evoluções</h3>
+      <h3>
+        📝 Evoluções
+      </h3>
 
       ${
         data?.length
-          ? data.map(e => `
-              <div class="appointment">
+          ? data.map(
+              evolution => `
+                <div
+                  class="appointment"
+                >
 
-                <strong>
-                  ${escapeHtml(
-                    patientsMap[e.patient_id] ||
-                    'Paciente'
-                  )}
-                </strong>
+                  <strong>
+                    ${
+                      escapeHtml(
+                        patientsMap[
+                          evolution.patient_id
+                        ] ||
+                        'Paciente'
+                      )
+                    }
+                  </strong>
 
-                <div>
-                  ${formatDate(e.evolution_date)}
+                  <div>
+                    ${formatDate(
+                      evolution.evolution_date
+                    )}
+
+                    ${
+                      evolution.evolution_time
+                        ? `
+                          às
+                          ${
+                            evolution
+                              .evolution_time
+                              .slice(0, 5)
+                          }
+                        `
+                        : ''
+                    }
+                  </div>
+
+                  <p>
+                    ${escapeHtml(
+                      evolution.text ||
+                      ''
+                    )}
+                  </p>
+
+                  <small>
+                    Status:
+                    ${
+                      escapeHtml(
+                        evolution.status ||
+                        ''
+                      )
+                    }
+                  </small>
+
                   ${
-                    e.evolution_time
-                      ? ` às ${e.evolution_time.slice(0,5)}`
+                    isManager() &&
+                    evolution.supervisor_feedback
+                      ? `
+                        <div
+                          style="
+                            margin-top:8px;
+                          "
+                        >
+                          <strong>
+                            Feedback:
+                          </strong>
+
+                          <p>
+                            ${escapeHtml(
+                              evolution.supervisor_feedback
+                            )}
+                          </p>
+                        </div>
+                      `
                       : ''
                   }
+
                 </div>
-
-                <p>
-                  ${escapeHtml(e.text || '')}
-                </p>
-
-                <small>
-                  Status:
-                  ${escapeHtml(e.status || '')}
-                </small>
-
-              </div>
-            `).join('')
+              `
+            ).join('')
           : `
             <p>
-              Nenhuma evolução cadastrada.
+              Nenhuma evolução
+              cadastrada.
             </p>
           `
       }
@@ -1803,7 +2325,9 @@ async function renderEvolutions() {
 
 async function renderSupervision() {
   const container =
-    document.querySelector('#page-content')
+    document.querySelector(
+      '#page-content'
+    )
 
   if (!isManager()) {
     container.innerHTML = `
@@ -1811,6 +2335,7 @@ async function renderSupervision() {
         Acesso não autorizado.
       </div>
     `
+
     return
   }
 
@@ -1820,32 +2345,58 @@ async function renderSupervision() {
   container.innerHTML = `
     <div class="box">
 
-      <h3>🔎 Área da supervisão</h3>
+      <h3>
+        🔎 Área da supervisão
+      </h3>
 
       <p>
-        Você possui acesso às agendas,
-        pacientes e evoluções das profissionais
-        da clínica.
+        Aqui você poderá acompanhar
+        as agendas, pacientes e
+        evoluções da clínica.
       </p>
 
-      <div style="margin-top:20px;">
+      <div
+        style="
+          margin-top:20px;
+        "
+      >
 
-        ${professionals.map(p => `
-          <div class="appointment">
+        ${
+          professionals.length
+            ? professionals.map(
+                professional => `
+                  <div
+                    class="appointment"
+                  >
 
-            <strong>
-              👩‍⚕️ ${escapeHtml(p.name)}
-            </strong>
+                    <strong>
+                      👩‍⚕️
+                      ${escapeHtml(
+                        professional.name
+                      )}
+                    </strong>
 
-            <button
-              data-professional="${p.id}"
-              class="ver-agenda-profissional"
-            >
-              Ver agenda
-            </button>
+                    <div>
+                      Fonoaudióloga
+                    </div>
 
-          </div>
-        `).join('')}
+                    <button
+                      class="ver-agenda-profissional"
+                      data-professional-id="${professional.id}"
+                    >
+                      📅 Ver agenda
+                    </button>
+
+                  </div>
+                `
+              ).join('')
+            : `
+              <p>
+                Nenhuma profissional
+                cadastrada.
+              </p>
+            `
+        }
 
       </div>
 
@@ -1856,13 +2407,34 @@ async function renderSupervision() {
     .querySelectorAll(
       '.ver-agenda-profissional'
     )
-    .forEach(button => {
+    .forEach(
+      button => {
 
-      button.onclick = () => {
-        show('agenda')
+        button.onclick = async () => {
+
+          const professionalId =
+            button.dataset
+              .professionalId
+
+          await show('agenda')
+
+          const filtro =
+            document.querySelector(
+              '#filtro-profissional'
+            )
+
+          if (filtro) {
+
+            filtro.value =
+              professionalId
+
+            await renderAgendaFiltrada(
+              professionalId
+            )
+          }
+        }
       }
-
-    })
+    )
 }
 
 /* =========================================================
@@ -1870,16 +2442,25 @@ async function renderSupervision() {
 ========================================================= */
 
 supabase.auth.onAuthStateChange(
-  async (event) => {
+  async event => {
 
-    if (event === 'PASSWORD_RECOVERY') {
+    if (
+      event ===
+      'PASSWORD_RECOVERY'
+    ) {
 
       app.innerHTML = `
         <main class="login">
 
           <div class="box">
 
-            <h1>🔐 Nova senha</h1>
+            <h1>
+              🔐 Nova senha
+            </h1>
+
+            <p>
+              Cadastre sua nova senha.
+            </p>
 
             <input
               id="nova-senha"
@@ -1887,11 +2468,21 @@ supabase.auth.onAuthStateChange(
               placeholder="Nova senha"
             >
 
-            <button id="salvar-senha">
+            <input
+              id="confirmar-senha"
+              type="password"
+              placeholder="Confirmar nova senha"
+            >
+
+            <button
+              id="salvar-senha"
+            >
               Salvar nova senha
             </button>
 
-            <div id="resultado-senha"></div>
+            <div
+              id="resultado-senha"
+            ></div>
 
           </div>
 
@@ -1900,48 +2491,79 @@ supabase.auth.onAuthStateChange(
 
       document.querySelector(
         '#salvar-senha'
-      ).onclick = async () => {
+      ).onclick =
+        async () => {
 
-        const password =
-          document.querySelector(
-            '#nova-senha'
-          ).value
+          const password =
+            document.querySelector(
+              '#nova-senha'
+            ).value
 
-        const result =
-          document.querySelector(
-            '#resultado-senha'
+          const confirmation =
+            document.querySelector(
+              '#confirmar-senha'
+            ).value
+
+          const result =
+            document.querySelector(
+              '#resultado-senha'
+            )
+
+          if (password.length < 6) {
+
+            result.textContent =
+              '⚠️ A senha precisa ter pelo menos 6 caracteres.'
+
+            return
+          }
+
+          if (
+            password !==
+            confirmation
+          ) {
+
+            result.textContent =
+              '⚠️ As senhas não conferem.'
+
+            return
+          }
+
+          result.textContent =
+            '⏳ Salvando...'
+
+          const {
+            error
+          } =
+            await supabase.auth
+              .updateUser({
+                password
+              })
+
+          if (error) {
+
+            result.textContent =
+              '❌ ' +
+              error.message
+
+            return
+          }
+
+          result.textContent =
+            '✅ Senha alterada com sucesso!'
+
+          setTimeout(
+            () => {
+              start()
+            },
+            1000
           )
-
-        if (password.length < 6) {
-          result.textContent =
-            'A senha precisa ter pelo menos 6 caracteres.'
-          return
         }
-
-        const { error } =
-          await supabase.auth.updateUser({
-            password
-          })
-
-        if (error) {
-          result.textContent =
-            '❌ ' + error.message
-          return
-        }
-
-        result.textContent =
-          '✅ Senha alterada com sucesso!'
-
-        setTimeout(() => {
-          start()
-        }, 1000)
-      }
     }
   }
 )
 
 /* =========================================================
-   INICIAR
+   INICIAR SISTEMA
 ========================================================= */
 
 start()
