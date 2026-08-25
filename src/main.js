@@ -8,7 +8,7 @@ export const supabase = createClient(url, key)
 
 const app = document.querySelector('#app')
 
-function login() {
+function login(message = '') {
   app.innerHTML = `
     <main class="login">
       <div class="box">
@@ -20,26 +20,64 @@ function login() {
 
         <button id="entrar">Entrar</button>
 
-        <div id="msg"></div>
+        <button id="esqueci" type="button">
+          Esqueci minha senha
+        </button>
+
+        <div id="msg">${message}</div>
       </div>
     </main>
   `
 
   document.querySelector('#entrar').onclick = async () => {
-    const emailValue = document.querySelector('#email').value
-    const passwordValue = document.querySelector('#password').value
+    const email = document.querySelector('#email').value.trim()
+    const password = document.querySelector('#password').value
     const msg = document.querySelector('#msg')
 
+    if (!email || !password) {
+      msg.textContent = 'Digite seu e-mail e sua senha.'
+      return
+    }
+
+    msg.textContent = 'Entrando...'
+
     const { error } = await supabase.auth.signInWithPassword({
-      email: emailValue,
-      password: passwordValue
+      email,
+      password
+    })
+
+    if (error) {
+      msg.textContent = 'E-mail ou senha incorretos.'
+      console.error(error)
+      return
+    }
+
+    await start()
+  }
+
+  document.querySelector('#esqueci').onclick = async () => {
+    const email = document.querySelector('#email').value.trim()
+    const msg = document.querySelector('#msg')
+
+    if (!email) {
+      msg.textContent = 'Digite seu e-mail primeiro.'
+      return
+    }
+
+    msg.textContent = 'Enviando e-mail...'
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin
     })
 
     if (error) {
       msg.textContent = error.message
-    } else {
-      start()
+      console.error(error)
+      return
     }
+
+    msg.textContent =
+      'E-mail enviado! Verifique sua caixa de entrada para criar uma nova senha.'
   }
 }
 
@@ -53,11 +91,49 @@ async function start() {
     return
   }
 
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (!profile) {
+    app.innerHTML = `
+      <main class="login">
+        <div class="box">
+          <h1>💬 FonoGestão</h1>
+          <h2>Perfil não encontrado</h2>
+          <p>
+            O usuário foi autenticado, mas ainda não possui
+            um perfil cadastrado no sistema.
+          </p>
+
+          <button id="sair">Sair</button>
+        </div>
+      </main>
+    `
+
+    document.querySelector('#sair').onclick = async () => {
+      await supabase.auth.signOut()
+      login()
+    }
+
+    return
+  }
+
   app.innerHTML = `
     <div class="layout">
 
       <aside>
         <h2>💬 FonoGestão</h2>
+
+        <p>
+          Olá, ${profile.name}
+        </p>
 
         <button class="nav active" data-page="agenda">
           📅 Agenda
@@ -87,7 +163,15 @@ async function start() {
       <section class="main">
 
         <header>
-          <h1>FonoGestão</h1>
+          <div>
+            <h1>FonoGestão</h1>
+            <span>
+              ${profile.role === 'supervisora'
+                ? 'Supervisora'
+                : 'Profissional'}
+            </span>
+          </div>
+
           <span>Sistema online</span>
         </header>
 
@@ -104,13 +188,15 @@ async function start() {
   }
 
   document.querySelectorAll('.nav').forEach(button => {
-    button.onclick = () => show(button.dataset.page)
+    button.onclick = () => {
+      showPage(button.dataset.page, profile)
+    }
   })
 
-  show('agenda')
+  showPage('agenda', profile)
 }
 
-function show(page) {
+function showPage(page, profile) {
 
   document.querySelectorAll('.nav').forEach(button => {
     button.classList.toggle(
@@ -132,172 +218,76 @@ function show(page) {
 
     evolutions: [
       '📝 Evoluções',
-      'Todas as evoluções organizadas por paciente e data.'
+      'Histórico de evoluções por paciente e data.'
     ],
 
     team: [
       '👩‍⚕️ Equipe',
-      'Até 10 profissionais com agenda e pacientes próprios.'
+      'Profissionais da equipe.'
     ],
 
     supervision: [
       '🔎 Supervisão',
-      'Acompanhe e revise as evoluções das profissionais.'
+      'Acompanhamento das profissionais.'
     ]
   }
 
   const [title, description] = titles[page]
 
-  const content = document.querySelector('#page')
-
-  content.innerHTML = `
+  document.querySelector('#page').innerHTML = `
     <div class="content">
 
       <h2>${title}</h2>
 
       <p>${description}</p>
 
-      ${
-        page === 'agenda'
-          ? calendar()
-          : page === 'patients'
-          ? patients()
-          : page === 'evolutions'
-          ? evolutions()
-          : page === 'team'
-          ? team()
-          : supervision()
-      }
+      <div class="box">
 
-    </div>
-  `
-}
+        ${
+          page === 'agenda'
+            ? `
+              <h3>Agenda</h3>
+              <p>
+                A agenda será carregada do banco de dados.
+              </p>
+            `
 
-function calendar() {
+            : page === 'patients'
+            ? `
+              <h3>Pacientes</h3>
+              <p>
+                Aqui ficarão os 45 pacientes,
+                organizados por profissional.
+              </p>
+            `
 
-  const days = [
-    'Dom 23/08',
-    'Seg 24/08',
-    'Ter 25/08',
-    'Qua 26/08',
-    'Qui 27/08',
-    'Sex 28/08',
-    'Sáb 29/08'
-  ]
+            : page === 'evolutions'
+            ? `
+              <h3>Evoluções</h3>
+              <p>
+                Todas as evoluções ficarão reunidas
+                por paciente e por data.
+              </p>
+            `
 
-  return `
-    <div class="toolbar">
+            : page === 'team'
+            ? `
+              <h3>Equipe</h3>
+              <p>
+                Aqui serão cadastradas as profissionais.
+              </p>
+            `
 
-      <button>Hoje</button>
-
-      <button>‹</button>
-
-      <button>›</button>
-
-      <select>
-        <option>Todas as profissionais</option>
-      </select>
-
-    </div>
-
-    <div class="calendar">
-
-      <div class="days">
-
-        ${days.map(day => `
-          <b>${day}</b>
-        `).join('')}
+            : `
+              <h3>Supervisão</h3>
+              <p>
+                Aqui você poderá acompanhar as evoluções
+                das profissionais.
+              </p>
+            `
+        }
 
       </div>
-
-      <div class="legend">
-
-        <span class="blue">●</span> Agendado
-
-        <span class="green">●</span> Atendido
-
-        <span class="yellow">●</span> Falta
-
-        <span class="red">●</span> Cancelado
-
-      </div>
-
-      <p class="empty">
-        A agenda será carregada do banco assim que os pacientes
-        e horários forem cadastrados.
-      </p>
-
-    </div>
-  `
-}
-
-function patients() {
-
-  return `
-    <div class="box">
-
-      <h3>Meus pacientes</h3>
-
-      <p>
-        Os pacientes serão vinculados automaticamente
-        à profissional responsável.
-      </p>
-
-      <button>
-        ➕ Cadastrar paciente
-      </button>
-
-    </div>
-  `
-}
-
-function evolutions() {
-
-  return `
-    <div class="box">
-
-      <h3>Histórico de evoluções</h3>
-
-      <p>
-        Cada paciente terá todas as evoluções reunidas
-        por data, com profissional e feedback da supervisora.
-      </p>
-
-    </div>
-  `
-}
-
-function team() {
-
-  return `
-    <div class="box">
-
-      <h3>Equipe</h3>
-
-      <p>
-        Cadastre até 10 profissionais.
-        Cada uma terá sua própria agenda e seus pacientes.
-      </p>
-
-      <button>
-        ➕ Cadastrar profissional
-      </button>
-
-    </div>
-  `
-}
-
-function supervision() {
-
-  return `
-    <div class="box">
-
-      <h3>Área da supervisora</h3>
-
-      <p>
-        Visualize agendas, pacientes, evoluções pendentes
-        e feedbacks de todas as profissionais.
-      </p>
 
     </div>
   `
