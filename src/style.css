@@ -1,0 +1,182 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fb;
+  color: #1b263b;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #d9deea;
+  border-radius: 9px;
+  padding: 11px 16px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.box {
+  background: #fff;
+  border: 1px solid #e2e7ef;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 8px 30px #0001;
+}
+
+.login .box {
+  width: min(420px, 90vw);
+}
+
+.login input {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  padding: 13px;
+  border: 1px solid #d9deea;
+  border-radius: 9px;
+}
+
+.login button {
+  width: 100%;
+  background: #7056e8;
+  color: #fff;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.layout aside {
+  width: 235px;
+  background: #101a2d;
+  color: #fff;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layout aside h2 {
+  margin: 0 0 20px;
+}
+
+.nav {
+  background: transparent;
+  color: #dfe6f2;
+  text-align: left;
+  border: 0;
+}
+
+.nav.active {
+  background: #7056e8;
+  color: #fff;
+}
+
+.logout {
+  margin-top: auto;
+}
+
+.main {
+  flex: 1;
+}
+
+.main header {
+  height: 72px;
+  background: #fff;
+  border-bottom: 1px solid #e4e8ef;
+  padding: 15px 25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.main header h1 {
+  margin: 0;
+}
+
+.content {
+  padding: 25px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.calendar {
+  background: #fff;
+  border: 1px solid #e1e6ee;
+  border-radius: 14px;
+  overflow: hidden;
+  min-height: 500px;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.days b {
+  padding: 16px;
+  text-align: center;
+  border-right: 1px solid #e1e6ee;
+  color: #1859bd;
+}
+
+.legend {
+  text-align: center;
+  padding: 18px;
+  border-bottom: 1px solid #e1e6ee;
+}
+
+.blue {
+  color: #3288d9;
+}
+
+.green {
+  color: #1da44a;
+}
+
+.yellow {
+  color: #e5a900;
+}
+
+.red {
+  color: #db3d3d;
+}
+
+.empty {
+  text-align: center;
+  color: #748096;
+  padding: 120px 20px;
+}
+
+.box {
+  margin-top: 20px;
+}
+
+.box button {
+  background: #7056e8;
+  color: #fff;
+}
+
+#msg {
+  color: #c33;
+  margin-top: 10px;
+}
