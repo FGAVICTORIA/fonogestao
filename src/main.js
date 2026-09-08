@@ -207,14 +207,14 @@ async function loadProfile() {
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .eq('active', true)
+
       .maybeSingle()
 
   if (erroPorId) {
     console.error('Erro ao buscar perfil pelo ID:', erroPorId)
     return null
   }
-
+S
   if (perfilPorId) {
     console.log('Perfil encontrado pelo ID:', perfilPorId)
     return perfilPorId
