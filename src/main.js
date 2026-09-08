@@ -214,7 +214,7 @@ async function loadProfile() {
     console.error('Erro ao buscar perfil pelo ID:', erroPorId)
     return null
   }
-S
+
   if (perfilPorId) {
     console.log('Perfil encontrado pelo ID:', perfilPorId)
     return perfilPorId
