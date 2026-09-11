@@ -2026,6 +2026,7 @@ async function getProfessionals() {
       [
         'profissional',
         'estagiaria'
+        'supervisora'
       ]
     )
     .order('name')
