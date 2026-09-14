@@ -375,6 +375,13 @@ function login(message = '') {
         >
           Esqueci minha senha
         </button>
+        
+        <button
+  id="criar-clinica"
+  style="margin-top:10px;"
+>
+  🏥 Criar minha clínica
+</button>
 
         <div id="msg">
           ${escapeHtml(message)}
@@ -437,6 +444,60 @@ function login(message = '') {
           '✅ Enviamos um link para seu e-mail.'
       }
     }
+}
+document.querySelector('#criar-clinica').onclick = () => {
+  app.innerHTML = `
+    <main class="login">
+      <div class="box">
+        <h1>🏥 Criar minha clínica</h1>
+
+        <p>
+          Cadastre sua clínica e crie o acesso da proprietária.
+        </p>
+
+        <input
+          id="nova-clinica-nome"
+          type="text"
+          placeholder="Nome da clínica"
+        >
+
+        <input
+          id="nova-clinica-proprietaria"
+          type="text"
+          placeholder="Nome da proprietária"
+        >
+
+        <input
+          id="nova-clinica-email"
+          type="email"
+          placeholder="E-mail"
+        >
+
+        <input
+          id="nova-clinica-senha"
+          type="password"
+          placeholder="Senha"
+        >
+
+        <button id="salvar-nova-clinica">
+          🏥 Criar clínica
+        </button>
+
+        <button
+          id="voltar-login"
+          style="margin-top:10px;"
+        >
+          ← Voltar para o login
+        </button>
+
+        <div id="msg-clinica"></div>
+      </div>
+    </main>
+  `
+
+  document.querySelector('#voltar-login').onclick = () => {
+    login()
+  }
 }
 
 /* =========================================================
