@@ -444,7 +444,6 @@ function login(message = '') {
           '✅ Enviamos um link para seu e-mail.'
       }
     }
-}
 
 document.querySelector('#criar-clinica').onclick = () => {
   app.innerHTML = `
