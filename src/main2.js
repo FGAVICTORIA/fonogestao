@@ -445,6 +445,7 @@ function login(message = '') {
       }
     }
 }
+
 document.querySelector('#criar-clinica').onclick = () => {
   app.innerHTML = `
     <main class="login">
