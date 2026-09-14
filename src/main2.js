@@ -1392,15 +1392,37 @@ async function renderAgenda() {
 
           if (!ok) return
 
-          const {
-            error
-          } = await supabase
-            .from('appointments')
-            .delete()
-            .eq(
-              'id',
-              button.dataset.id
-            )
+       const appointment =
+  (appointments || []).find(
+    item =>
+      String(item.id) ===
+      String(button.dataset.id)
+  )
+
+if (!appointment) return
+
+let deleteQuery =
+  supabase
+    .from('appointments')
+    .delete()
+
+if (appointment.recurrence_group_id) {
+  deleteQuery =
+    deleteQuery.eq(
+      'recurrence_group_id',
+      appointment.recurrence_group_id
+    )
+} else {
+  deleteQuery =
+    deleteQuery.eq(
+      'id',
+      appointment.id
+    )
+}
+
+const {
+  error
+} = await deleteQuery
 
           if (error) {
             alert(
@@ -1631,15 +1653,37 @@ async function renderAgendaFiltrada(
             return
           }
 
-          const {
-            error
-          } = await supabase
-            .from('appointments')
-            .delete()
-            .eq(
-              'id',
-              button.dataset.id
-            )
+const appointment =
+  (appointments || []).find(
+    item =>
+      String(item.id) ===
+      String(button.dataset.id)
+  )
+
+if (!appointment) return
+
+let deleteQuery =
+  supabase
+    .from('appointments')
+    .delete()
+
+if (appointment.recurrence_group_id) {
+  deleteQuery =
+    deleteQuery.eq(
+      'recurrence_group_id',
+      appointment.recurrence_group_id
+    )
+} else {
+  deleteQuery =
+    deleteQuery.eq(
+      'id',
+      appointment.id
+    )
+}
+
+const {
+  error
+} = await deleteQuery
 
           if (error) {
             alert(
@@ -2032,7 +2076,11 @@ async function mostrarFormularioAgendamento(
       )
 
     const appointmentsToCreate = []
-
+const recurrenceGroupId =
+  recurrence === 'nenhuma'
+    ? null
+    : crypto.randomUUID() 
+    
     for (
       let index = 0;
       index < quantity;
@@ -2075,29 +2123,31 @@ async function mostrarFormularioAgendamento(
           )
       }
 
-      appointmentsToCreate.push({
-        patient_id:
-          patientId,
+appointmentsToCreate.push({
+  patient_id:
+    patientId,
 
-        professional_id:
-          professionalId,
+  professional_id:
+    professionalId,
 
-        appointment_date:
-          appointmentDate,
+  appointment_date:
+    appointmentDate,
 
-        start_time:
-          startTime,
+  start_time:
+    startTime,
 
-        end_time:
-          endTime || null,
+  end_time:
+    endTime || null,
 
-        status:
-          'agendado',
+  status:
+    'agendado',
 
-        clinic_id:
-          currentProfile.clinic_id
-      })
-    }
+  clinic_id:
+    currentProfile.clinic_id,
+
+  recurrence_group_id:
+    recurrenceGroupId
+})
 
     const {
       error
