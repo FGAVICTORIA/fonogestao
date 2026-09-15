@@ -3840,22 +3840,131 @@ async function renderTeam() {
   container.innerHTML = `
     <div class="box">
 
-      <div
-        class="fg-toolbar"
-        style="justify-content:space-between;"
-      >
+        <div
+          class="fg-toolbar"
+          style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;"
+        >
 
-        <div>
-          <h3>
-            👩‍⚕️ Equipe
-          </h3>
+          <div>
+            <h3>
+              👩‍⚕️ Equipe
+            </h3>
 
-          <p class="fg-muted">
-            Profissionais cadastrados na clínica.
-          </p>
+            <p class="fg-muted">
+              Pessoas cadastradas na clínica.
+            </p>
+          </div>
+
+          <button
+            id="abrir-cadastro-pessoa"
+            class="fg-btn primary"
+          >
+            ➕ Cadastrar pessoa
+          </button>
+
         </div>
 
-      </div>
+        <div
+          id="form-cadastro-pessoa"
+          class="box"
+          style="display:none; margin-top:15px;"
+        >
+
+          <h3>
+            ➕ Cadastrar pessoa
+          </h3>
+
+          <div class="fg-grid">
+
+            <div>
+              <label>Nome</label>
+              <input
+                id="novo-pessoa-nome"
+                type="text"
+                placeholder="Nome completo"
+              >
+            </div>
+
+            <div>
+              <label>E-mail</label>
+              <input
+                id="novo-pessoa-email"
+                type="email"
+                placeholder="E-mail de acesso"
+              >
+            </div>
+
+            <div>
+              <label>Senha</label>
+              <input
+                id="novo-pessoa-senha"
+                type="password"
+                placeholder="Mínimo de 6 caracteres"
+              >
+            </div>
+
+            <div>
+              <label>Tipo de usuário</label>
+              <select id="novo-pessoa-papel">
+                <option value="profissional">
+                  Profissional
+                </option>
+
+                <option value="estagiaria">
+                  Estagiária
+                </option>
+
+                <option value="supervisora">
+                  Supervisora
+                </option>
+
+                <option value="recepcionista">
+                  Recepcionista
+                </option>
+
+                ${
+                  currentProfile?.role ===
+                  'proprietaria'
+                    ? `
+                      <option value="proprietaria">
+                        Proprietária
+                      </option>
+                    `
+                    : ''
+                }
+
+              </select>
+            </div>
+
+          </div>
+
+          <div
+            id="cadastro-pessoa-mensagem"
+            class="fg-muted"
+            style="margin-top:10px;"
+          ></div>
+
+          <div
+            style="display:flex; gap:10px; margin-top:15px;"
+          >
+
+            <button
+              id="salvar-cadastro-pessoa"
+              class="fg-btn primary"
+            >
+              💾 Cadastrar
+            </button>
+
+            <button
+              id="cancelar-cadastro-pessoa"
+              class="fg-btn"
+            >
+              Cancelar
+            </button>
+
+          </div>
+
+        </div>
 
       ${
         professionals.length
@@ -3912,10 +4021,155 @@ async function renderTeam() {
         O cadastro de novas contas profissionais
         continua sendo realizado pelo cadastro
         administrativo configurado no sistema.
-      </p>
+              </p>
 
     </div>
   `
+
+  const abrirCadastro =
+    
+    document.querySelector(
+      '#abrir-cadastro-pessoa'
+    )
+
+  const formCadastro =
+    document.querySelector(
+      '#form-cadastro-pessoa'
+    )
+
+  const cancelarCadastro =
+    document.querySelector(
+      '#cancelar-cadastro-pessoa'
+    )
+
+  const salvarCadastro =
+    document.querySelector(
+      '#salvar-cadastro-pessoa'
+    )
+
+  const mensagemCadastro =
+    document.querySelector(
+      '#cadastro-pessoa-mensagem'
+    )
+
+  if (abrirCadastro) {
+    abrirCadastro.onclick = () => {
+      formCadastro.style.display = 'block'
+    }
+  }
+
+  if (cancelarCadastro) {
+    cancelarCadastro.onclick = () => {
+      formCadastro.style.display = 'none'
+
+      document.querySelector(
+        '#novo-pessoa-nome'
+      ).value = ''
+
+      document.querySelector(
+        '#novo-pessoa-email'
+      ).value = ''
+
+      document.querySelector(
+        '#novo-pessoa-senha'
+      ).value = ''
+
+      mensagemCadastro.textContent = ''
+    }
+  }
+
+  if (salvarCadastro) {
+    salvarCadastro.onclick =
+      async () => {
+
+        const nome =
+          document.querySelector(
+            '#novo-pessoa-nome'
+          ).value.trim()
+
+        const email =
+          document.querySelector(
+            '#novo-pessoa-email'
+          ).value.trim()
+
+        const password =
+          document.querySelector(
+            '#novo-pessoa-senha'
+          ).value
+
+        const papel =
+          document.querySelector(
+            '#novo-pessoa-papel'
+          ).value
+
+        if (!nome || !email || !password) {
+          mensagemCadastro.textContent =
+            'Preencha nome, e-mail e senha.'
+
+          return
+        }
+
+        salvarCadastro.disabled = true
+
+        mensagemCadastro.textContent =
+          'Cadastrando...'
+
+        const {
+          data,
+          error
+        } =
+          await supabase.functions.invoke(
+            'criar-usuario',
+            {
+              body: {
+                nome,
+                email,
+                password,
+                papel
+              }
+            }
+          )
+
+        salvarCadastro.disabled = false
+
+        if (error) {
+          console.error(
+            'Erro ao cadastrar pessoa:',
+            error
+          )
+
+          mensagemCadastro.textContent =
+            'Erro ao cadastrar pessoa. Verifique os dados e tente novamente.'
+
+          return
+        }
+
+        if (data?.error) {
+          mensagemCadastro.textContent =
+            data.error
+
+          return
+        }
+
+        mensagemCadastro.textContent =
+          data?.message ||
+          'Pessoa cadastrada com sucesso!'
+
+        document.querySelector(
+          '#novo-pessoa-nome'
+        ).value = ''
+
+        document.querySelector(
+          '#novo-pessoa-email'
+        ).value = ''
+
+        document.querySelector(
+          '#novo-pessoa-senha'
+        ).value = ''
+
+        await renderTeam()
+      }
+  }
 }
 
 /* =========================================================
