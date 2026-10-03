@@ -495,9 +495,10 @@ document.querySelector('#criar-clinica').onclick = () => {
     </main>
   `
 
-  document.querySelector('#voltar-login').onclick = () => {
+ document.querySelector('#voltar-login').onclick = () => {
     login()
   }
+}
 }
 
 /* =========================================================
@@ -4426,4 +4427,3 @@ supabase.auth.onAuthStateChange(
 
 injectFonoGestaoEnhancements()
 start()
-}
