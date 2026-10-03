@@ -4426,3 +4426,4 @@ supabase.auth.onAuthStateChange(
 
 injectFonoGestaoEnhancements()
 start()
+}
